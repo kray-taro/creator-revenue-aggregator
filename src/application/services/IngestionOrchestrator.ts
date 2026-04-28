@@ -1,11 +1,15 @@
 import { PlatformAdapterFactory } from '../factories/PlatformAdapterFactory';
-import type { ITransaction, PlatformName } from '../../domain/entities/ITransaction';
-import type { ITransactionRepository } from '../../domain/ports/ITransactionRepository';
-import type { IPlatformStatusRepository } from '../../domain/ports/IPlatformStatusRepository';
-import type { IAuditLogger } from '../../domain/ports/IAuditLogger';
-import { validateTransaction, type ValidationError } from '../../domain/services/TransactionValidator';
-import { failure, success, type Result } from '../../domain/shared/Result';
-import type { PlatformAdapterErrorCode } from '../../domain/ports/IPlatformAdapter';
+import type { ITransaction } from '@domain/entities';
+import { validateTransaction, type ValidationError } from '@domain/services';
+import { success, type Result } from '@domain/shared';
+import type { RepositoryError } from '@domain/ports';
+import { TransactionPersistenceService } from './TransactionPersistenceService';
+import { IngestionErrorHandler } from './IngestionErrorHandler';
+import { IngestionAuditService } from './IngestionAuditService';
+import { OrchestratorErrorHandler } from './OrchestratorErrorHandler';
+
+const DEFAULT_BATCH_SIZE = 100;
+const DEFAULT_BATCH_DELAY_MS = 100; // Rate limiting delay between batches
 
 export interface ILogger {
   info(message: string, context?: Record<string, unknown>): void;
@@ -28,6 +32,12 @@ export interface IngestionRecordFailure {
   readonly details: string;
 }
 
+interface BatchProcessingResult {
+  saved: number;
+  redTabMarked: number;
+  failures: IngestionRecordFailure[];
+}
+
 export interface IngestionOrchestratorError {
   readonly code: 'ADAPTER_FAILURE' | 'TERMINAL_ADAPTER_FAILURE' | 'UNEXPECTED';
   readonly message: string;
@@ -36,30 +46,33 @@ export interface IngestionOrchestratorError {
   readonly redTabSuggested: boolean;
 }
 
-const TERMINAL_ADAPTER_ERROR_CODES: ReadonlySet<PlatformAdapterErrorCode> = new Set([
-  'RATE_LIMIT',
-  'RATE_LIMITED',
-  'AUTH_EXPIRED',
-  'TOKEN_EXPIRED',
-  'UNAUTHORIZED',
-]);
-
-const KNOWN_PLATFORMS: ReadonlySet<PlatformName> = new Set([
-  'youtube',
-  'patreon',
-  'gumroad',
-  'substack',
-  'shopify',
-  'stripe',
-]);
-
+/**
+ * Orchestrates the ingestion process by coordinating between adapters and services.
+ * Follows GRASP Controller pattern - delegates responsibilities to specialized services.
+ */
 export class IngestionOrchestrator {
+  private readonly persistenceService: TransactionPersistenceService;
+  private readonly errorHandler: IngestionErrorHandler;
+  private readonly auditService: IngestionAuditService;
+  private readonly orchestratorErrorHandler: OrchestratorErrorHandler;
+  private readonly batchSize: number;
+  private readonly batchDelayMs: number;
+
   constructor(
-    private readonly transactionRepository: ITransactionRepository,
-    private readonly platformStatusRepository: IPlatformStatusRepository,
-    private readonly auditLogger: IAuditLogger,
-    private readonly logger: ILogger
-  ) {}
+    persistenceService: TransactionPersistenceService,
+    errorHandler: IngestionErrorHandler,
+    auditService: IngestionAuditService,
+    private readonly logger: ILogger,
+    batchSize: number = DEFAULT_BATCH_SIZE,
+    batchDelayMs: number = DEFAULT_BATCH_DELAY_MS
+  ) {
+    this.persistenceService = persistenceService;
+    this.errorHandler = errorHandler;
+    this.auditService = auditService;
+    this.orchestratorErrorHandler = new OrchestratorErrorHandler(auditService as any);
+    this.batchSize = batchSize;
+    this.batchDelayMs = batchDelayMs;
+  }
 
 
   async run(clientId: string, platformName: string): Promise<Result<IngestionRunReport, IngestionOrchestratorError>> {
@@ -78,7 +91,7 @@ export class IngestionOrchestrator {
     });
 
     if (!adapterResult.ok) {
-      const isTerminal = TERMINAL_ADAPTER_ERROR_CODES.has(adapterResult.error.code);
+      const isTerminal = this.errorHandler.isTerminalError(adapterResult.error.code);
       this.logger.error('Ingestion adapter failure.', {
         clientId,
         platformName,
@@ -86,119 +99,55 @@ export class IngestionOrchestrator {
         circuitBreaker: isTerminal ? 'EARLY_EXIT_TRIGGERED' : 'STANDARD_FAILURE_EXIT',
       });
 
-      await this.auditLogger.log(clientId, 'INGESTION_ADAPTER_FETCH', 'failure', {
+      await this.auditService.logAdapterFetchFailure(
+        clientId,
         platformName,
-        errorCode: adapterResult.error.code,
-        errorMessage: adapterResult.error.message,
-        retryable: adapterResult.error.retryable,
-        circuitBreaker: isTerminal,
-        redTabSuggested: true,
-      });
+        adapterResult.error.code,
+        adapterResult.error.message,
+        adapterResult.error.retryable,
+        isTerminal
+      );
 
       if (isTerminal) {
-        const platform = this.toKnownPlatform(platformName);
-        if (platform) {
-          await this.platformStatusRepository.updateStatus(
-            clientId,
-            platform,
-            'RED',
-            adapterResult.error.message
-          );
-        }
+        await this.errorHandler.updatePlatformStatusToRed(
+          clientId,
+          platformName,
+          adapterResult.error.message
+        );
       }
 
-      return failure({
-        code: isTerminal ? 'TERMINAL_ADAPTER_FAILURE' : 'ADAPTER_FAILURE',
-        message: adapterResult.error.message,
-        retryable: adapterResult.error.retryable,
-        shouldRetry: !isTerminal,
-        redTabSuggested: true,
-      });
+      return this.orchestratorErrorHandler.transformError<IngestionOrchestratorError>(
+        adapterResult.error,
+        {
+          defaultCode: 'ADAPTER_FAILURE',
+          codeMapping: isTerminal ? { [adapterResult.error.code]: 'TERMINAL_ADAPTER_FAILURE' } : undefined,
+        },
+        {
+          shouldRetry: !isTerminal,
+          redTabSuggested: true,
+        }
+      );
     }
 
     const failures: IngestionRecordFailure[] = [];
     let saved = 0;
     let redTabMarked = 0;
 
-    for (const record of adapterResult.value) {
-      const prepared: ITransaction = {
-        ...record,
-        clientId,
-      };
+    // Process transactions in batches
+    const records = adapterResult.value;
+    for (let i = 0; i < records.length; i += this.batchSize) {
+      const batch = records.slice(i, i + this.batchSize);
+      
+      const batchResult = await this.processBatch(batch, clientId, platformName);
+      
+      saved += batchResult.saved;
+      redTabMarked += batchResult.redTabMarked;
+      failures.push(...batchResult.failures);
 
-      const validationResult = validateTransaction(prepared);
-
-      if (!validationResult.ok) {
-        const validationError = validationResult.error;
-        this.logValidationFailure(clientId, platformName, prepared, validationError);
-
-        await this.auditLogger.log(clientId, 'INGESTION_TRANSACTION_VALIDATE', 'failure', {
-          platformName,
-          transactionId: prepared.id,
-          platformTransactionId: prepared.platformTransactionId,
-          errorCode: validationError.code,
-          errorMessage: validationError.message,
-          validationField: validationError.field,
-          redTabStatus: 'error',
-        });
-
-        const redTabTransaction: ITransaction = {
-          ...prepared,
-          status: 'error',
-          updatedAt: new Date().toISOString(),
-        };
-
-        const saveErrorResult = await this.transactionRepository.save(redTabTransaction);
-
-        if (!saveErrorResult.ok) {
-          await this.auditLogger.log(clientId, 'INGESTION_TRANSACTION_SAVE', 'failure', {
-            platformName,
-            transactionId: prepared.id,
-            platformTransactionId: prepared.platformTransactionId,
-            statusAttempted: 'error',
-            errorCode: saveErrorResult.error.code,
-            errorMessage: saveErrorResult.error.message,
-            retryable: saveErrorResult.error.retryable,
-          });
-
-          failures.push({
-            transactionId: prepared.id,
-            reason: 'PERSISTENCE_FAILURE',
-            details: saveErrorResult.error.message,
-          });
-          continue;
-        }
-
-        redTabMarked += 1;
-        failures.push({
-          transactionId: prepared.id,
-          reason: 'VALIDATION_FAILURE',
-          details: validationError.message,
-        });
-        continue;
+      // Rate limiting: delay between batches (except for the last batch)
+      if (i + this.batchSize < records.length) {
+        await new Promise(resolve => setTimeout(resolve, this.batchDelayMs));
       }
-
-      const savedResult = await this.transactionRepository.save(prepared);
-      if (!savedResult.ok) {
-        await this.auditLogger.log(clientId, 'INGESTION_TRANSACTION_SAVE', 'failure', {
-          platformName,
-          transactionId: prepared.id,
-          platformTransactionId: prepared.platformTransactionId,
-          statusAttempted: prepared.status,
-          errorCode: savedResult.error.code,
-          errorMessage: savedResult.error.message,
-          retryable: savedResult.error.retryable,
-        });
-
-        failures.push({
-          transactionId: prepared.id,
-          reason: 'PERSISTENCE_FAILURE',
-          details: savedResult.error.message,
-        });
-        continue;
-      }
-
-      saved += 1;
     }
 
     return success({
@@ -211,9 +160,190 @@ export class IngestionOrchestrator {
     });
   }
 
-  private toKnownPlatform(platformName: string): PlatformName | null {
-    const normalized = platformName.toLowerCase() as PlatformName;
-    return KNOWN_PLATFORMS.has(normalized) ? normalized : null;
+  /**
+   * Processes a single batch of transactions
+   */
+  private async processBatch(
+    batch: ITransaction[],
+    clientId: string,
+    platformName: string
+  ): Promise<BatchProcessingResult> {
+    // Prepare all transactions in the batch
+    const preparedBatch = batch.map(record => ({
+      ...record,
+      clientId,
+    }));
+
+    // Parallel validation of the batch
+    const validationResults = await Promise.all(
+      preparedBatch.map(async (prepared) => ({
+        transaction: prepared,
+        validation: validateTransaction(prepared),
+      }))
+    );
+
+    // Separate valid and invalid transactions
+    const validTransactions: ITransaction[] = [];
+    const invalidTransactions: Array<{ transaction: ITransaction; error: ValidationError }> = [];
+
+    for (const { transaction, validation } of validationResults) {
+      if (validation.ok) {
+        validTransactions.push(transaction);
+      } else {
+        invalidTransactions.push({ transaction, error: validation.error });
+      }
+    }
+
+    // Process invalid and valid transactions in parallel
+    const [invalidResult, validResult] = await Promise.all([
+      this.processInvalidTransactions(invalidTransactions, clientId, platformName),
+      this.processValidTransactions(validTransactions, clientId, platformName),
+    ]);
+
+    // Combine results
+    return {
+      saved: invalidResult.saved + validResult.saved,
+      redTabMarked: invalidResult.redTabMarked + validResult.redTabMarked,
+      failures: [...invalidResult.failures, ...validResult.failures],
+    };
+  }
+
+  /**
+   * Processes invalid transactions by marking them as error status and persisting
+   */
+  private async processInvalidTransactions(
+    invalidTransactions: Array<{ transaction: ITransaction; error: ValidationError }>,
+    clientId: string,
+    platformName: string
+  ): Promise<BatchProcessingResult> {
+    if (invalidTransactions.length === 0) {
+      return { saved: 0, redTabMarked: 0, failures: [] };
+    }
+
+    // Cache timestamp for consistent updatedAt across all transactions
+    const now = new Date().toISOString();
+
+    // Mark transactions as error status
+    const redTabTransactions = invalidTransactions.map(({ transaction }) => ({
+      ...transaction,
+      status: 'error' as const,
+      updatedAt: now,
+    }));
+
+    // Synchronous logging
+    invalidTransactions.forEach(({ transaction, error }) => {
+      this.logValidationFailure(clientId, platformName, transaction, error);
+    });
+
+    // Async audit logging in parallel
+    await Promise.all(
+      invalidTransactions.map(({ transaction, error }) =>
+        this.auditService.logValidationFailure(clientId, platformName, transaction, error)
+      )
+    );
+
+    // Bulk save error transactions
+    const saveErrorResult = await this.persistenceService.saveTransactionsBulk(redTabTransactions);
+
+    if (!saveErrorResult.ok) {
+      // Handle persistence failure
+      const persistenceFailures = await this.handlePersistenceFailure(
+        redTabTransactions,
+        saveErrorResult.error,
+        clientId,
+        platformName,
+        'error'
+      );
+
+      return {
+        saved: 0,
+        redTabMarked: 0,
+        failures: persistenceFailures,
+      };
+    }
+
+    // Success: transactions saved with error status
+    const validationFailures = invalidTransactions.map(({ transaction, error }) => ({
+      transactionId: transaction.id,
+      reason: 'VALIDATION_FAILURE' as const,
+      details: error.message,
+    }));
+
+    return {
+      saved: 0,
+      redTabMarked: saveErrorResult.value.length,
+      failures: validationFailures,
+    };
+  }
+
+  /**
+   * Processes valid transactions by persisting them
+   */
+  private async processValidTransactions(
+    validTransactions: ITransaction[],
+    clientId: string,
+    platformName: string
+  ): Promise<BatchProcessingResult> {
+    if (validTransactions.length === 0) {
+      return { saved: 0, redTabMarked: 0, failures: [] };
+    }
+
+    // Bulk save valid transactions
+    const savedResult = await this.persistenceService.saveTransactionsBulk(validTransactions);
+
+    if (!savedResult.ok) {
+      // Handle persistence failure
+      const persistenceFailures = await this.handlePersistenceFailure(
+        validTransactions,
+        savedResult.error,
+        clientId,
+        platformName,
+        validTransactions[0]?.status || 'pending'
+      );
+
+      return {
+        saved: 0,
+        redTabMarked: 0,
+        failures: persistenceFailures,
+      };
+    }
+
+    return {
+      saved: savedResult.value.length,
+      redTabMarked: 0,
+      failures: [],
+    };
+  }
+
+  /**
+   * Handles persistence failures by logging to audit and tracking failures
+   */
+  private async handlePersistenceFailure(
+    transactions: ITransaction[],
+    error: RepositoryError,
+    clientId: string,
+    platformName: string,
+    statusAttempted: string
+  ): Promise<IngestionRecordFailure[]> {
+    // Log all persistence failures in parallel
+    await Promise.all(
+      transactions.map((transaction) =>
+        this.auditService.logPersistenceFailure(
+          clientId,
+          platformName,
+          transaction,
+          error,
+          statusAttempted
+        )
+      )
+    );
+
+    // Return failure records
+    return transactions.map((transaction) => ({
+      transactionId: transaction.id,
+      reason: 'PERSISTENCE_FAILURE' as const,
+      details: error.message,
+    }));
   }
 
   private logValidationFailure(
@@ -232,3 +362,5 @@ export class IngestionOrchestrator {
     });
   }
 }
+
+
