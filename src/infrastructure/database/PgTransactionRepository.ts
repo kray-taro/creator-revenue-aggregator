@@ -60,7 +60,7 @@ export class PgTransactionRepository implements ITransactionRepository {
         $16, $17, $18, $19, $20, $21,
         $22, $23, $24
       )
-      ON CONFLICT (platform_transaction_id, source_platform)
+      ON CONFLICT (client_id, platform_transaction_id, source_platform)
       DO NOTHING
       RETURNING *;
     `;

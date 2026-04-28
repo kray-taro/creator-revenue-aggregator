@@ -34,12 +34,13 @@ export class SyncOrchestrator {
   ) {}
 
   async run(clientId: string): Promise<Result<FullClientSyncReport, SyncOrchestratorError>> {
-    const lockResult = await this.lockService.withLock('nightly-sync-lock', 120_000, async () => {
+    const lockName = `nightly-sync-lock:${clientId}`;
+    const lockResult = await this.lockService.withLock(lockName, 120_000, async () => {
       const startedAt = new Date().toISOString();
       await this.auditLogger.log(clientId, 'FULL_CLIENT_SYNC', 'success', {
         phase: 'start',
         startedAt,
-        lockName: 'nightly-sync-lock',
+        lockName,
       });
 
       const activeConnectionsResult = await this.platformConnectionRepository.findActiveByClientId(clientId);
