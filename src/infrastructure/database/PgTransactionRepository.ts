@@ -1,6 +1,6 @@
-import type { ITransaction } from '../../domain/entities/ITransaction';
-import type { ITransactionRepository, RepositoryError } from '../../domain/ports/ITransactionRepository';
-import { failure, success, type Result } from '../../domain/shared/Result';
+import type { ITransaction } from "@domain/entities";
+import type { ITransactionRepository, RepositoryError } from "@domain/ports";
+import { failure, success, type Result } from "@domain/shared";
 
 interface QueryResultRow {
   [key: string]: unknown;
@@ -43,60 +43,47 @@ interface TransactionRow extends QueryResultRow {
 }
 
 export class PgTransactionRepository implements ITransactionRepository {
+  private static readonly INSERT_TRANSACTION_SQL = `
+    INSERT INTO transactions (
+      id, client_id, source_platform, platform_transaction_id, platform_id, transaction_date,
+      gross_revenue, platform_fee, net_payout,
+      description, deduplication_hash, source_hierarchy, suggested_category, confidence_score, status,
+      qb_account_id, qb_entry_id, qb_sync_status, synced_at, reviewed_by, reviewed_at,
+      receipt_snapshot_url, created_at, updated_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6,
+      $7, $8, $9,
+      $10, $11, $12, $13, $14, $15,
+      $16, $17, $18, $19, $20, $21,
+      $22, $23, $24
+    )
+    ON CONFLICT (client_id, platform_transaction_id, source_platform)
+    DO NOTHING
+    RETURNING *;
+  `;
+
   constructor(private readonly pgClient: IPgClient) {}
 
   async save(transaction: ITransaction): Promise<Result<ITransaction, RepositoryError>> {
-    const sql = `
-      INSERT INTO transactions (
-        id, client_id, source_platform, platform_transaction_id, platform_id, transaction_date,
-        gross_revenue, platform_fee, net_payout,
-        description, deduplication_hash, source_hierarchy, suggested_category, confidence_score, status,
-        qb_account_id, qb_entry_id, qb_sync_status, synced_at, reviewed_by, reviewed_at,
-        receipt_snapshot_url, created_at, updated_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6,
-        $7, $8, $9,
-        $10, $11, $12, $13, $14, $15,
-        $16, $17, $18, $19, $20, $21,
-        $22, $23, $24
-      )
-      ON CONFLICT (client_id, platform_transaction_id, source_platform)
-      DO NOTHING
-      RETURNING *;
-    `;
-
     try {
+      // Validate and sanitize platform transaction ID
+      const validationError = this.validatePlatformTransactionId(transaction.platformTransactionId);
+      if (validationError) {
+        return failure({
+          code: 'INVALID_INPUT',
+          message: validationError,
+          retryable: false,
+        });
+      }
+
       const now = new Date().toISOString();
-      const params: readonly unknown[] = [
-        transaction.id,
-        transaction.clientId,
-        transaction.platform,
-        transaction.platformTransactionId,
-        transaction.platformId ?? null,
-        transaction.transactionDate,
-        transaction.grossRevenue,
-        transaction.platformFee,
-        transaction.netPayout,
-        transaction.description ?? null,
-        transaction.deduplicationHash ?? null,
-        transaction.sourceHierarchy ?? null,
-        transaction.suggestedCategory ?? null,
-        transaction.confidenceScore ?? null,
-        transaction.status,
-        transaction.qbAccountId ?? null,
-        transaction.qbEntryId ?? null,
-        transaction.qbSyncStatus ?? null,
-        transaction.syncedAt ?? null,
-        transaction.reviewedBy ?? null,
-        transaction.reviewedAt ?? null,
-        transaction.receiptSnapshotUrl ?? null,
-        transaction.createdAt,
-        transaction.updatedAt || now,
-      ];
+      const params = this.buildTransactionParams(transaction, now);
+      const result = await this.pgClient.query<TransactionRow>(
+        PgTransactionRepository.INSERT_TRANSACTION_SQL,
+        params
+      );
 
-      const result = await this.pgClient.query<TransactionRow>(sql, params);
-
-      if (!result.rows[0] || result.rowCount === 0) {
+      if (this.isDuplicateTransaction(result)) {
         return failure({
           code: 'DUPLICATE_TRANSACTION_IGNORED',
           message: `Duplicate transaction ignored for platform_transaction_id=${transaction.platformTransactionId}.`,
@@ -110,13 +97,71 @@ export class PgTransactionRepository implements ITransactionRepository {
     }
   }
 
-  async findById(id: string): Promise<Result<ITransaction, RepositoryError>> {
-    const sql = 'SELECT * FROM transactions WHERE id = $1 LIMIT 1;';
+  async saveBulk(transactions: ITransaction[]): Promise<Result<ITransaction[], RepositoryError>> {
+    if (transactions.length === 0) {
+      return success([]);
+    }
 
     try {
-      const result = await this.pgClient.query<TransactionRow>(sql, [id]);
+      const now = new Date().toISOString();
+      const savedTransactions: ITransaction[] = [];
+      
+      // Validate all transactions first
+      for (const transaction of transactions) {
+        const validationError = this.validatePlatformTransactionId(transaction.platformTransactionId);
+        if (validationError) {
+          return failure({
+            code: 'INVALID_INPUT',
+            message: `Bulk save validation failed: ${validationError}`,
+            retryable: false,
+          });
+        }
+      }
 
-      if (result.rows.length === 0) {
+      // Build bulk insert query with multiple value sets
+      const valuesClauses: string[] = [];
+      const allParams: unknown[] = [];
+      let paramIndex = 1;
+
+      for (const transaction of transactions) {
+        const params = this.buildTransactionParams(transaction, now);
+        const valuePlaceholders = params.map(() => `$${paramIndex++}`).join(', ');
+        valuesClauses.push(`(${valuePlaceholders})`);
+        allParams.push(...params);
+      }
+
+      const bulkInsertSQL = `
+        INSERT INTO transactions (
+          id, client_id, source_platform, platform_transaction_id, platform_id, transaction_date,
+          gross_revenue, platform_fee, net_payout,
+          description, deduplication_hash, source_hierarchy, suggested_category, confidence_score, status,
+          qb_account_id, qb_entry_id, qb_sync_status, synced_at, reviewed_by, reviewed_at,
+          receipt_snapshot_url, created_at, updated_at
+        ) VALUES ${valuesClauses.join(', ')}
+        ON CONFLICT (client_id, platform_transaction_id, source_platform)
+        DO NOTHING
+        RETURNING *;
+      `;
+
+      const result = await this.pgClient.query<TransactionRow>(bulkInsertSQL, allParams);
+      
+      for (const row of result.rows) {
+        savedTransactions.push(this.toDomain(row));
+      }
+
+      return success(savedTransactions);
+    } catch (error) {
+      return failure(this.toRepositoryError(error));
+    }
+  }
+
+  async findById(id: string): Promise<Result<ITransaction, RepositoryError>> {
+    const query = 'SELECT * FROM transactions WHERE id = $1 LIMIT 1;';
+    try {
+      const result = await this.pgClient.query<TransactionRow>(query, [id]);
+
+      if (this.isNotFound(result)) {
+        // return failure(this.createNotFoundError(id));
         return failure({
           code: 'NOT_FOUND',
           message: `Transaction not found for id=${id}.`,
@@ -131,15 +176,99 @@ export class PgTransactionRepository implements ITransactionRepository {
   }
 
   async findByClientId(clientId: string): Promise<Result<ITransaction[], RepositoryError>> {
-    const sql = 'SELECT * FROM transactions WHERE client_id = $1 ORDER BY transaction_date DESC;';
-
+    const query = 'SELECT * FROM transactions WHERE client_id = $1 ORDER BY transaction_date DESC;';
     try {
-      const result = await this.pgClient.query<TransactionRow>(sql, [clientId]);
+      const result = await this.pgClient.query<TransactionRow>(query, [clientId]);
       return success(result.rows.map((row) => this.toDomain(row)));
     } catch (error) {
       return failure(this.toRepositoryError(error));
     }
   }
+
+  private buildTransactionParams(transaction: ITransaction, now: string): readonly unknown[] {
+    return [
+      transaction.id,
+      transaction.clientId,
+      transaction.platform,
+      transaction.platformTransactionId,
+      transaction.platformId ?? null,
+      transaction.transactionDate,
+      transaction.grossRevenue,
+      transaction.platformFee,
+      transaction.netPayout,
+      transaction.description ?? null,
+      transaction.deduplicationHash ?? null,
+      transaction.sourceHierarchy ?? null,
+      transaction.suggestedCategory ?? null,
+      transaction.confidenceScore ?? null,
+      transaction.status,
+      transaction.qbAccountId ?? null,
+      transaction.qbEntryId ?? null,
+      transaction.qbSyncStatus ?? null,
+      transaction.syncedAt ?? null,
+      transaction.reviewedBy ?? null,
+      transaction.reviewedAt ?? null,
+      transaction.receiptSnapshotUrl ?? null,
+      transaction.createdAt,
+      transaction.updatedAt ?? now,
+    ];
+  }
+
+  /**
+   * Validates platform transaction ID for security:
+   * - Max length of 255 characters per schema
+   * - Sanitizes special characters that could be SQL injection attempts
+   * - Validates format patterns
+   */
+  private validatePlatformTransactionId(platformTransactionId: string): string | null {
+    // Check if the ID is empty
+    if (!platformTransactionId || platformTransactionId.trim().length === 0) {
+      return 'Platform transaction ID cannot be empty';
+    }
+
+    // Validate max length (255 chars per schema)
+    if (platformTransactionId.length > 255) {
+      return `Platform transaction ID exceeds maximum length of 255 characters (got ${platformTransactionId.length})`;
+    }
+
+    // Check for SQL injection patterns (basic protection)
+    const sqlInjectionPatterns = [
+      /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE)\b)/i,
+      /(--|;|\/\*|\*\/)/,
+      /('|")\s*(OR|AND)\s*('|")/i,
+      /\bUNION\b.*\bSELECT\b/i,
+    ];
+
+    for (const pattern of sqlInjectionPatterns) {
+      if (pattern.test(platformTransactionId)) {
+        return 'Platform transaction ID contains potentially malicious SQL patterns';
+      }
+    }
+
+    // Check for excessive special characters (potential injection attempts)
+    const specialCharCount = (platformTransactionId.match(/[^\w\s\-_.@]/g) || []).length;
+    const specialCharRatio = specialCharCount / platformTransactionId.length;
+    
+    if (specialCharRatio > 0.3) {
+      return 'Platform transaction ID contains excessive special characters';
+    }
+
+    // Validate that it contains at least some alphanumeric characters
+    if (!/[a-zA-Z0-9]/.test(platformTransactionId)) {
+      return 'Platform transaction ID must contain at least one alphanumeric character';
+    }
+
+    return null; // Valid
+  }
+
+  private isDuplicateTransaction(result: QueryResult<TransactionRow>): boolean {
+    return !result.rows[0] || result.rowCount === 0;
+  }
+
+  private isNotFound(result: QueryResult<TransactionRow>): boolean {
+    return result.rows.length === 0;
+  }
+
 
   private toDomain(row: TransactionRow): ITransaction {
     return {
@@ -171,6 +300,15 @@ export class PgTransactionRepository implements ITransactionRepository {
   }
 
   private toRepositoryError(error: unknown): RepositoryError {
+    // Handle PostgreSQL CHECK constraint violations (error code 23514)
+    if (this.isPostgresError(error) && error.code === '23514' && error.constraint === 'transactions_crs_equation_check') {
+      return {
+        code: 'CRS_EQUATION_VIOLATION',
+        message: `Transaction violates CRS equation: gross_revenue - platform_fee - net_payout must be <= 0.01. ${error.detail || ''}`,
+        retryable: false,
+      };
+    }
+
     if (error instanceof Error) {
       return {
         code: 'DB_ERROR',
@@ -184,5 +322,9 @@ export class PgTransactionRepository implements ITransactionRepository {
       message: 'Unknown database error.',
       retryable: true,
     };
+  }
+
+  private isPostgresError(error: unknown): error is { code: string; constraint?: string; detail?: string } {
+    return typeof error === 'object' && error !== null && 'code' in error;
   }
 }
