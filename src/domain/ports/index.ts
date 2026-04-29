@@ -1,18 +1,39 @@
 export type { IAuditLogger } from './IAuditLogger';
 export type { IConfig } from './IConfig';
-export type { IDistributedLockService } from './IDistributedLockService';
+export type {
+  IConfidenceScoringService,
+  ConfidenceCategory,
+  ConfidenceReason,
+  ConfidenceScoringResult,
+  BatchConfidenceScoringResult,
+  ConfidenceScoringError
+} from './IConfidenceScoringService';
+export type {
+  IDeduplicationService,
+  DeduplicationResult,
+  BatchDeduplicationResult,
+  DeduplicationError
+} from './IDeduplicationService';
+export type { IDistributedLockService, DistributedLockError } from './IDistributedLockService';
 export type { IEncryptionService } from './IEncryptionService';
-export type { IIngestionJobQueue } from './IIngestionJobQueue';
+export type { IIngestionJobQueue, IngestionJobRequest, IngestionQueueError } from './IIngestionJobQueue';
 export type { IPlatformAdapter, PlatformAdapterErrorCode } from './IPlatformAdapter';
-export type { 
-    IPlatformConnectionRepository,
+export type {
+  IPlatformConnectionRepository,
   PlatformConnection,
   PlatformConnectionRepositoryError,
-  PlatformTokenBundle, } from './IPlatformConnectionRepository';
-export type { IPlatformStatusRepository,
+  PlatformTokenBundle
+} from './IPlatformConnectionRepository';
+export type {
+  IPlatformStatusRepository,
   PlatformHealthStatus,
   PlatformStatusRecord,
-  PlatformStatusRepositoryError, } from './IPlatformStatusRepository';
+  PlatformStatusRepositoryError
+} from './IPlatformStatusRepository';
+export type {
+  IRawResponseArchivalService,
+  RawResponseMetadata,
+  ArchivalResult,
+  RawResponseArchivalError
+} from './IRawResponseArchivalService';
 export type { ITransactionRepository, RepositoryError } from './ITransactionRepository';
-
-
