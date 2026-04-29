@@ -1,11 +1,11 @@
-import type { PlatformName } from '../../domain/entities/ITransaction';
+import type { PlatformName } from '@domain/entities';
 import type {
   IPlatformStatusRepository,
   PlatformHealthStatus,
   PlatformStatusRecord,
   PlatformStatusRepositoryError,
-} from '../../domain/ports/IPlatformStatusRepository';
-import { failure, success, type Result } from '../../domain/shared/Result';
+} from '@domain/ports';
+import { failure, success, type Result } from '@domain/shared';
 import type { IPgClient } from './PgTransactionRepository';
 
 interface PlatformStatusRow {
@@ -14,6 +14,7 @@ interface PlatformStatusRow {
   status: PlatformHealthStatus;
   last_error: string | null;
   updated_at: string;
+  [key: string]: unknown;
 }
 
 export class PgPlatformStatusRepository implements IPlatformStatusRepository {

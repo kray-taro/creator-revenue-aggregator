@@ -3,9 +3,9 @@ import type {
   PlatformConnection,
   PlatformConnectionRepositoryError,
   PlatformTokenBundle,
-} from '../../domain/ports/IPlatformConnectionRepository';
-import type { IEncryptionService } from '../../domain/ports/IEncryptionService';
-import { failure, success, type Result } from '../../domain/shared/Result';
+  IEncryptionService
+} from '@domain/ports';
+import { failure, success, type Result } from '@domain/shared';
 import type { IPgClient } from './PgTransactionRepository';
 
 interface PlatformConnectionRow {
@@ -14,10 +14,12 @@ interface PlatformConnectionRow {
   platform: PlatformConnection['platform'];
   status: PlatformConnection['status'];
   expires_at: string | null;
+  [key: string]: unknown;
 }
 
 interface PlatformTokenRow {
   encrypted_token: Buffer | null;
+  [key: string]: unknown;
 }
 
 export class PgPlatformConnectionRepository implements IPlatformConnectionRepository {
