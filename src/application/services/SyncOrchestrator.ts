@@ -166,7 +166,7 @@ export class SyncOrchestrator {
     failures: Array<{ platformName: string; reason: string }>;
     dispatchedJobs: number;
   }> {
-    // Calculate date range per PRD US-102 (same logic as IngestionOrchestrator)
+    // Calculate date range (same logic as IngestionOrchestrator)
     const today = new Date();
     const isFirstOfMonth = today.getDate() === 1;
     

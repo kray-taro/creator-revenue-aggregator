@@ -1,4 +1,4 @@
-export type { IAuditLogger } from './IAuditLogger';
+export type { IAuditLogger, AuditLoggerError } from './IAuditLogger';
 export type { IConfig } from './IConfig';
 export type {
   IConfidenceScoringService,
@@ -17,7 +17,7 @@ export type {
 export type { IDistributedLockService, DistributedLockError } from './IDistributedLockService';
 export type { IEncryptionService } from './IEncryptionService';
 export type { IIngestionJobQueue, IngestionJobRequest, IngestionQueueError } from './IIngestionJobQueue';
-export type { IPlatformAdapter, PlatformAdapterErrorCode } from './IPlatformAdapter';
+export type { IPlatformAdapter, PlatformAdapterErrorCode, FetchPlatformDataInput, PlatformAdapterError } from './IPlatformAdapter';
 export type {
   IPlatformConnectionRepository,
   PlatformConnection,
