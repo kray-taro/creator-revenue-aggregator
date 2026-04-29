@@ -1,5 +1,5 @@
 import { PlatformAdapterFactory } from '../factories/PlatformAdapterFactory';
-import type { ITransaction } from '@domain/entities';
+import type { ITransaction, PlatformName } from '@domain/entities';
 import { validateTransaction, type ValidationError } from '@domain/services';
 import { success, type Result } from '@domain/shared';
 import type { RepositoryError } from '@domain/ports';
@@ -7,9 +7,17 @@ import { TransactionPersistenceService } from './TransactionPersistenceService';
 import { IngestionErrorHandler } from './IngestionErrorHandler';
 import { IngestionAuditService } from './IngestionAuditService';
 import { OrchestratorErrorHandler } from './OrchestratorErrorHandler';
+import { getPlatformConfig } from '@infrastructure/config/PlatformConfig';
 
-const DEFAULT_BATCH_SIZE = 100;
-const DEFAULT_BATCH_DELAY_MS = 100; // Rate limiting delay between batches
+/**
+ * Helper function for rate limiting delays between batches
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => {
+    // @ts-ignore - setTimeout is available at runtime
+    setTimeout(resolve, ms);
+  });
+}
 
 export interface ILogger {
   info(message: string, context?: Record<string, unknown>): void;
@@ -55,23 +63,17 @@ export class IngestionOrchestrator {
   private readonly errorHandler: IngestionErrorHandler;
   private readonly auditService: IngestionAuditService;
   private readonly orchestratorErrorHandler: OrchestratorErrorHandler;
-  private readonly batchSize: number;
-  private readonly batchDelayMs: number;
 
   constructor(
     persistenceService: TransactionPersistenceService,
     errorHandler: IngestionErrorHandler,
     auditService: IngestionAuditService,
-    private readonly logger: ILogger,
-    batchSize: number = DEFAULT_BATCH_SIZE,
-    batchDelayMs: number = DEFAULT_BATCH_DELAY_MS
+    private readonly logger: ILogger
   ) {
     this.persistenceService = persistenceService;
     this.errorHandler = errorHandler;
     this.auditService = auditService;
     this.orchestratorErrorHandler = new OrchestratorErrorHandler(auditService as any);
-    this.batchSize = batchSize;
-    this.batchDelayMs = batchDelayMs;
   }
 
 
@@ -152,10 +154,21 @@ export class IngestionOrchestrator {
     let saved = 0;
     let redTabMarked = 0;
 
+    // Get platform-specific configuration for batch processing
+    const platformConfig = getPlatformConfig(platformName as PlatformName);
+    const { batchSize, batchDelayMs } = platformConfig;
+
+    this.logger.info('Using platform-specific batch configuration', {
+      clientId,
+      platformName,
+      batchSize,
+      batchDelayMs,
+    });
+
     // Process transactions in batches
     const records = adapterResult.value;
-    for (let i = 0; i < records.length; i += this.batchSize) {
-      const batch = records.slice(i, i + this.batchSize);
+    for (let i = 0; i < records.length; i += batchSize) {
+      const batch = records.slice(i, i + batchSize);
       
       const batchResult = await this.processBatch(batch, clientId, platformName);
       
@@ -164,8 +177,8 @@ export class IngestionOrchestrator {
       failures.push(...batchResult.failures);
 
       // Rate limiting: delay between batches (except for the last batch)
-      if (i + this.batchSize < records.length) {
-        await new Promise(resolve => setTimeout(resolve, this.batchDelayMs));
+      if (i + batchSize < records.length) {
+        await delay(batchDelayMs);
       }
     }
 
