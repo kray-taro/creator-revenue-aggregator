@@ -79,18 +79,22 @@ export class IngestionWorker {
           lockName,
           warning: 'Exclusivity may have been lost during operation',
         });
-        // Continue processing - operation completed despite extension failure
-      } else {
-        this.logger.error('Lock execution failed.', {
-          jobId: job.id,
-          clientId,
-          platformName,
-          error: lockResult.error,
-        });
-        throw new Error(lockResult.error.message);
+        // Lock extension failed, but we cannot access the operation result
+        // since lockResult is a Failure. This is a critical error.
+        throw new Error(`Lock extension failed for ${lockName}: ${lockResult.error.message}`);
       }
+
+      // Other lock execution failures
+      this.logger.error('Lock execution failed.', {
+        jobId: job.id,
+        clientId,
+        platformName,
+        error: lockResult.error,
+      });
+      throw new Error(lockResult.error.message);
     }
 
+    // Lock was successfully acquired and held - extract the operation result
     const result = lockResult.value;
 
     if (result.ok) {

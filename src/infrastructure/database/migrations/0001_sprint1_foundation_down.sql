@@ -20,5 +20,3 @@ DROP TABLE IF EXISTS users;
 
 DROP INDEX IF EXISTS idx_clients_name;
 DROP TABLE IF EXISTS clients;
-
--- Made with Bob

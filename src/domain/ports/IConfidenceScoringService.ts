@@ -114,5 +114,3 @@ export interface IConfidenceScoringService {
    */
   categorizeScore(score: number): ConfidenceCategory;
 }
-
-// Made with Bob

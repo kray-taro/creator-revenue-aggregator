@@ -73,5 +73,3 @@ export interface IRawResponseArchivalService {
     s3Key: string
   ): Promise<Result<T, RawResponseArchivalError>>;
 }
-
-// Made with Bob

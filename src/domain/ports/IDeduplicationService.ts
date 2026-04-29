@@ -87,5 +87,3 @@ export interface IDeduplicationService {
    */
   generateFingerprint(transaction: ITransaction): string;
 }
-
-// Made with Bob
