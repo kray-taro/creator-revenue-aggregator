@@ -82,11 +82,30 @@ export class IngestionOrchestrator {
   async ingest(clientId: string, platformName: string): Promise<Result<IngestionRunReport, IngestionOrchestratorError>> {
     const adapter = PlatformAdapterFactory.create(platformName);
 
-    const today = new Date().toISOString().slice(0, 10);
+    // Calculate date range per PRD US-102:
+    // - On 1st of month: Full pull of prior month
+    // - Other days: Incremental pull of last 7 days (catches late-arriving transactions)
+    const today = new Date();
+    const isFirstOfMonth = today.getDate() === 1;
+    
+    const fromDate = isFirstOfMonth
+      ? new Date(today.getFullYear(), today.getMonth() - 1, 1) // Prior month start
+      : new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);   // Last 7 days
+    
+    const toDate = today;
+
+    this.logger.info('Ingestion date range calculated', {
+      clientId,
+      platformName,
+      isFirstOfMonth,
+      fromDate: fromDate.toISOString().slice(0, 10),
+      toDate: toDate.toISOString().slice(0, 10),
+    });
+
     const adapterResult = await adapter.fetchData({
       clientId,
-      fromDate: today,
-      toDate: today,
+      fromDate: fromDate.toISOString().slice(0, 10),
+      toDate: toDate.toISOString().slice(0, 10),
       connectionId: `${clientId}:${platformName}`,
     });
 
