@@ -156,6 +156,8 @@ export class SyncOrchestrator {
   /**
    * Dispatches ingestion jobs for all platform connections in parallel.
    * Uses Promise.allSettled to ensure all dispatches are attempted even if some fail.
+   *
+   * Implements idempotency via jobId to prevent duplicate job execution.
    */
   private async dispatchPlatformJobs(
     clientId: string,
@@ -164,13 +166,32 @@ export class SyncOrchestrator {
     failures: Array<{ platformName: string; reason: string }>;
     dispatchedJobs: number;
   }> {
+    // Calculate date range per PRD US-102 (same logic as IngestionOrchestrator)
+    const today = new Date();
+    const isFirstOfMonth = today.getDate() === 1;
+    
+    const fromDate = isFirstOfMonth
+      ? new Date(today.getFullYear(), today.getMonth() - 1, 1) // Prior month start
+      : new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);   // Last 7 days
+    
+    const toDate = today;
+    const fromDateStr = fromDate.toISOString().slice(0, 10);
+    const toDateStr = toDate.toISOString().slice(0, 10);
+
     const dispatchResults = await Promise.allSettled(
-      connections.map(connection =>
-        this.ingestionQueue.enqueue({
+      connections.map(connection => {
+        // Generate idempotency key: clientId:platform:dateRange
+        // This prevents duplicate jobs for same client/platform/date range
+        const jobId = `${clientId}:${connection.platform}:${fromDateStr}:${toDateStr}`;
+        
+        return this.ingestionQueue.enqueue({
           clientId,
           platformName: connection.platform,
-        })
-      )
+          fromDate: fromDateStr,
+          toDate: toDateStr,
+          jobId,
+        });
+      })
     );
 
     const failures: Array<{ platformName: string; reason: string }> = [];
@@ -192,16 +213,22 @@ export class SyncOrchestrator {
           error: result.reason,
         });
       } else if (!result.value.ok) {
-        failures.push({
-          platformName: connection.platform,
-          reason: result.value.error.message,
-        });
+        // Skip logging for DUPLICATE_JOB errors (expected behavior)
+        if (result.value.error.code !== 'DUPLICATE_JOB') {
+          failures.push({
+            platformName: connection.platform,
+            reason: result.value.error.message,
+          });
 
-        this.logger.warn('Platform sync job dispatch failed, continuing with remaining platforms.', {
-          clientId,
-          platformName: connection.platform,
-          error: result.value.error,
-        });
+          this.logger.warn('Platform sync job dispatch failed, continuing with remaining platforms.', {
+            clientId,
+            platformName: connection.platform,
+            error: result.value.error,
+          });
+        } else {
+          // Duplicate job is not a failure - job already queued
+          dispatchedJobs += 1;
+        }
       } else {
         dispatchedJobs += 1;
       }

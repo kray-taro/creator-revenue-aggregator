@@ -1,9 +1,7 @@
-import type { IngestionOrchestrator } from '../../../application/services/IngestionOrchestrator';
+import type { IngestionOrchestrator } from '@application/services';
+import type { IngestionJobRequest } from '@domain/ports';
 
-export interface IngestionJobPayload {
-  readonly clientId: string;
-  readonly platformName: string;
-}
+export type IngestionJobPayload = IngestionJobRequest;
 
 /**
  * Minimal job shape compatible with BullMQ worker processor signature.
