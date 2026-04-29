@@ -1,7 +1,31 @@
 import type { IAuditLogger, AuditLoggerError } from '../../domain/ports/IAuditLogger';
+import { SENSITIVE_FIELDS } from '../../domain/ports/IAuditLogger';
 import { failure, success, type Result } from '../../domain/shared/Result';
 
 export class ConsoleAuditLogger implements IAuditLogger {
+  /**
+   * Sanitizes sensitive data before logging.
+   * Redacts or masks sensitive fields to prevent exposure of PII,
+   * financial amounts, or platform-specific identifiers.
+   */
+  sanitize(data: Record<string, unknown>): Record<string, unknown> {
+    const sanitized: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(data)) {
+      if (SENSITIVE_FIELDS.includes(key as any)) {
+        // Redact sensitive fields
+        sanitized[key] = '[REDACTED]';
+      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+        // Recursively sanitize nested objects
+        sanitized[key] = this.sanitize(value as Record<string, unknown>);
+      } else {
+        sanitized[key] = value;
+      }
+    }
+
+    return sanitized;
+  }
+
   async log(
     clientId: string,
     action: string,
@@ -9,6 +33,9 @@ export class ConsoleAuditLogger implements IAuditLogger {
     metadata: Record<string, unknown>
   ): Promise<Result<boolean, AuditLoggerError>> {
     try {
+      // Sanitize metadata before logging
+      const sanitizedMetadata = this.sanitize(metadata);
+
       // KISS implementation for Phase 1 scaffolding.
       // Can be replaced by DB/SIEM-backed logger behind the same port.
       console.log(
@@ -17,7 +44,7 @@ export class ConsoleAuditLogger implements IAuditLogger {
           clientId,
           action,
           status,
-          metadata,
+          metadata: sanitizedMetadata,
         })
       );
 
