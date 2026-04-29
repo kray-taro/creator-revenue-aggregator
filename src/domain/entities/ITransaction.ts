@@ -47,7 +47,8 @@ export type PlatformName =
   | 'gumroad'
   | 'substack'
   | 'shopify'
-  | 'stripe';
+  | 'stripe'
+  | 'unknown';
 
 export type SourceHierarchy = 'primary' | 'processor';
 

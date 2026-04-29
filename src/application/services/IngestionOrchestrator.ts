@@ -73,7 +73,7 @@ export class IngestionOrchestrator {
     this.persistenceService = persistenceService;
     this.errorHandler = errorHandler;
     this.auditService = auditService;
-    this.orchestratorErrorHandler = new OrchestratorErrorHandler(auditService as any);
+    this.orchestratorErrorHandler = new OrchestratorErrorHandler(auditService);
   }
 
 
@@ -84,7 +84,7 @@ export class IngestionOrchestrator {
   async ingest(clientId: string, platformName: string): Promise<Result<IngestionRunReport, IngestionOrchestratorError>> {
     const adapter = PlatformAdapterFactory.create(platformName);
 
-    // Calculate date range per PRD US-102:
+    // Calculate date range:
     // - On 1st of month: Full pull of prior month
     // - Other days: Incremental pull of last 7 days (catches late-arriving transactions)
     const today = new Date();
@@ -104,12 +104,37 @@ export class IngestionOrchestrator {
       toDate: toDate.toISOString().slice(0, 10),
     });
 
-    const adapterResult = await adapter.fetchData({
-      clientId,
-      fromDate: fromDate.toISOString().slice(0, 10),
-      toDate: toDate.toISOString().slice(0, 10),
-      connectionId: `${clientId}:${platformName}`,
-    });
+    let adapterResult;
+    try {
+      adapterResult = await adapter.fetchData({
+        clientId,
+        fromDate: fromDate.toISOString().slice(0, 10),
+        toDate: toDate.toISOString().slice(0, 10),
+        connectionId: `${clientId}:${platformName}`,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown adapter error';
+      this.logger.error('Adapter threw unexpected exception', {
+        clientId,
+        platformName,
+        error: errorMessage,
+      });
+
+      await this.auditService.logAdapterFetchFailure(
+        clientId,
+        platformName,
+        'UNKNOWN',
+        errorMessage,
+        true,
+        false
+      );
+
+      return this.orchestratorErrorHandler.transformError<IngestionOrchestratorError>(
+        { code: 'UNKNOWN', message: errorMessage },
+        { defaultCode: 'ADAPTER_FAILURE' },
+        { shouldRetry: true, redTabSuggested: true }
+      );
+    }
 
     if (!adapterResult.ok) {
       const isTerminal = this.errorHandler.isTerminalError(adapterResult.error.code);

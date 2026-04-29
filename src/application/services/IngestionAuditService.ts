@@ -1,12 +1,27 @@
 import type { ITransaction } from '@domain/entities';
-import type { RepositoryError, IAuditLogger, PlatformAdapterErrorCode} from '@domain/ports';
+import type { RepositoryError, IAuditLogger, PlatformAdapterErrorCode, AuditLoggerError} from '@domain/ports';
 import type { ValidationError } from '@domain/services';
+import type { Result } from '@domain/shared';
 
 /**
  * Handles audit logging for ingestion operations
  */
-export class IngestionAuditService {
+export class IngestionAuditService implements IAuditLogger {
   constructor(private readonly auditLogger: IAuditLogger) {}
+
+  // Implement IAuditLogger interface by delegating to the wrapped logger
+  async log(
+    clientId: string,
+    action: string,
+    status: 'success' | 'failure',
+    metadata: Record<string, unknown>
+  ): Promise<Result<boolean, AuditLoggerError>> {
+    return this.auditLogger.log(clientId, action, status, metadata);
+  }
+
+  sanitize(data: Record<string, unknown>): Record<string, unknown> {
+    return this.auditLogger.sanitize(data);
+  }
 
   async logAdapterFetchFailure(
     clientId: string,

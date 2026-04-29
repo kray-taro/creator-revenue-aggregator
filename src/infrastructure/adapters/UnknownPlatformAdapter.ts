@@ -1,9 +1,9 @@
-import type { IPlatformAdapter, FetchPlatformDataInput, PlatformAdapterError } from '../../domain/ports/IPlatformAdapter';
-import type { ITransaction } from '../../domain/entities/ITransaction';
-import { failure, type Result } from '../../domain/shared/Result';
+import type { IPlatformAdapter, FetchPlatformDataInput, PlatformAdapterError } from '@domain/ports';
+import type { ITransaction } from '@domain/entities/ITransaction';
+import { failure, type Result } from '@domain/shared/Result';
 
 export class UnknownPlatformAdapter implements IPlatformAdapter {
-  readonly platform = 'stripe' as const;
+  readonly platform = 'unknown' as const;
 
   constructor(private readonly requestedPlatform: string) {}
 
