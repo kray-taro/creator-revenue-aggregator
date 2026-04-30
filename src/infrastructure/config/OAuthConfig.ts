@@ -15,6 +15,8 @@ const oauthEnvSchema = z.object({
   GUMROAD_CLIENT_SECRET: z.string().min(1, 'GUMROAD_CLIENT_SECRET is required.'),
   SUBSTACK_CLIENT_ID:    z.string().min(1, 'SUBSTACK_CLIENT_ID is required.'),
   SUBSTACK_CLIENT_SECRET:z.string().min(1, 'SUBSTACK_CLIENT_SECRET is required.'),
+  QB_CLIENT_ID:          z.string().min(1, 'QB_CLIENT_ID is required.'),
+  QB_CLIENT_SECRET:      z.string().min(1, 'QB_CLIENT_SECRET is required.'),
   OAUTH_REDIRECT_BASE_URL: z.string().url('OAUTH_REDIRECT_BASE_URL must be a valid URL.'),
   OAUTH_STATE_TTL_MS: z.coerce.number().int().positive().default(600_000),
 });
@@ -92,6 +94,12 @@ export const loadOAuthConfig = (): Map<PlatformName, OAuthPlatformConfig> => {
       'https://substack.com/oauth/authorize',
       'https://substack.com/api/v1/oauth/token',
       ['read_financials', 'read_subscribers']
+    )],
+    ['quickbooks', buildPlatformConfig(
+      env, 'quickbooks', env.QB_CLIENT_ID, env.QB_CLIENT_SECRET,
+      'https://appcenter.intuit.com/connect/oauth2',
+      'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',
+      ['com.intuit.quickbooks.accounting']
     )],
   ]);
 

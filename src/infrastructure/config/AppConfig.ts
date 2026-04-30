@@ -11,6 +11,8 @@ const envSchema = z.object({
   OAUTH_STATE_TTL_MS:      z.coerce.number().int().positive().default(600_000),
   JWT_ACCESS_EXPIRY_SECONDS:  z.coerce.number().int().positive().default(900),
   JWT_REFRESH_EXPIRY_SECONDS: z.coerce.number().int().positive().default(604_800),
+  AWS_REGION:               z.string().default('us-east-1'),
+  AWS_S3_RAW_RESPONSE_BUCKET: z.string().min(1, 'AWS_S3_RAW_RESPONSE_BUCKET is required.'),
 });
 
 const parseEnv = (): IConfig => {
@@ -34,6 +36,8 @@ const parseEnv = (): IConfig => {
     oauthStateTtlMs:    parsed.data.OAUTH_STATE_TTL_MS,
     jwtAccessExpiry:    parsed.data.JWT_ACCESS_EXPIRY_SECONDS,
     jwtRefreshExpiry:   parsed.data.JWT_REFRESH_EXPIRY_SECONDS,
+    awsRegion:          parsed.data.AWS_REGION,
+    s3RawResponseBucket: parsed.data.AWS_S3_RAW_RESPONSE_BUCKET,
   };
 
   return Object.freeze(config);

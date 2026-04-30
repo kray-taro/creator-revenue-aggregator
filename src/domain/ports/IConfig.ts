@@ -8,4 +8,6 @@ export interface IConfig {
   readonly oauthStateTtlMs: number;
   readonly jwtAccessExpiry: number;
   readonly jwtRefreshExpiry: number;
+  readonly awsRegion: string;
+  readonly s3RawResponseBucket: string;
 }
