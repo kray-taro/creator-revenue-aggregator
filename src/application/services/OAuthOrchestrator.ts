@@ -309,27 +309,17 @@ export class OAuthOrchestrator {
 
     const refreshToken = this.encryptionService.decrypt(encryptedRefresh);
 
-    // Find connection to determine platform
-    const expiringResult = await this.connectionRepo.findExpiringConnections(0);
-    if (!expiringResult.ok) {
+    // Direct lookup by ID — added to IPlatformConnectionRepository in Sprint 3 (B5 fix)
+    const connectionResult = await this.connectionRepo.findById(connectionId);
+    if (!connectionResult.ok) {
       return failure({
         code: 'REFRESH_FAILED',
-        message: expiringResult.error.message,
-        retryable: expiringResult.error.retryable,
+        message: connectionResult.error.message,
+        retryable: connectionResult.error.retryable,
       });
     }
 
-    // We need the platform from the connection — fetch active connections to match by id
-    // NOTE: In Sprint 3 we'll add findById to IPlatformConnectionRepository.
-    // For now, we handle refresh via the known connection data from the lock scope.
-    const connection = expiringResult.value.find(c => c.id === connectionId);
-    if (!connection) {
-      return failure({
-        code: 'REFRESH_FAILED',
-        message: `Connection ${connectionId} not found among expiring connections.`,
-        retryable: false,
-      });
-    }
+    const connection = connectionResult.value;
 
     const strategy = this.strategyFactory.getStrategy(connection.platform);
     if (!strategy) {

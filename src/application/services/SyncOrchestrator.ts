@@ -1,10 +1,12 @@
-import { success, type Result } from '@domain/shared';
+import { failure, success, type Result } from '@domain/shared';
 import type {
   IAuditLogger,
   IDistributedLockService,
   IIngestionJobQueue,
   IPlatformConnectionRepository,
-  PlatformConnection
+  ITransactionRepository,
+  IQuickBooksAdapter,
+  PlatformConnection,
 } from '@domain/ports';
 import { OrchestratorErrorHandler } from './OrchestratorErrorHandler';
 
@@ -22,16 +24,20 @@ export interface FullClientSyncReport {
   readonly failures: ReadonlyArray<{ platformName: string; reason: string }>;
 }
 
+export interface QBSyncReport {
+  readonly clientId: string;
+  readonly attempted: number;
+  readonly synced: number;
+  readonly failed: number;
+  readonly failedIds: ReadonlyArray<string>;
+}
+
 export interface SyncOrchestratorError {
   readonly code: 'LOCK_NOT_ACQUIRED' | 'PLATFORM_LOOKUP_FAILED' | 'UNEXPECTED';
   readonly message: string;
   readonly retryable: boolean;
 }
 
-/**
- * Custom error class for platform lookup failures.
- * Provides type-safe error handling instead of string-based error signaling.
- */
 class PlatformLookupError extends Error {
   constructor(
     message: string,
@@ -51,38 +57,19 @@ export class SyncOrchestrator {
     private readonly auditLogger: IAuditLogger,
     private readonly lockService: IDistributedLockService,
     private readonly logger: ISyncLogger,
-    private readonly config: { syncLockTtlMs: number }
+    private readonly config: { syncLockTtlMs: number },
+    private readonly transactionRepository: ITransactionRepository | null = null,
+    private readonly quickBooksAdapter: IQuickBooksAdapter | null = null,
+    private readonly qbRealmId: string | null = null
   ) {
     this.errorHandler = new OrchestratorErrorHandler(auditLogger);
   }
 
+  /**
+   * Dispatches ingestion jobs for all active platform connections for a client.
+   * Uses a distributed lock to prevent concurrent syncs for the same client.
+   */
   async run(clientId: string): Promise<Result<FullClientSyncReport, SyncOrchestratorError>> {
-    /**
-     * Distributed Lock Strategy for Nightly Sync Operations
-     *
-     * Lock Naming Convention:
-     * - Format: `nightly-sync-lock:${clientId}`
-     * - Prefix 'nightly-sync-lock' identifies this as a scheduled sync operation lock
-     * - Suffix '${clientId}' ensures per-client isolation (prevents concurrent syncs for same client)
-     * - This allows multiple clients to sync in parallel while preventing race conditions per client
-     *
-     * TTL (Time-To-Live) Rationale:
-     * - Set to 120,000ms (2 minutes)
-     * - Chosen based on expected sync duration: fetching connections + dispatching jobs typically < 30s
-     * - 4x buffer provides safety margin for network latency, database queries, and job queue operations
-     * - Prevents indefinite locks if process crashes or network partitions occur
-     *
-     * Lock Cleanup Strategy:
-     * - Automatic: Lock expires after TTL if not explicitly released
-     * - Explicit: Lock released automatically when withLock callback completes (success or failure)
-     * - Redlock algorithm ensures lock is released across all Redis nodes
-     *
-     * Lock Timeout Behavior:
-     * - If operation exceeds 120s, lock auto-expires and another sync can start
-     * - Original operation continues but loses exclusivity guarantee
-     * - Audit logs track overlapping syncs via startedAt/endedAt timestamps
-     * - Consider increasing TTL if legitimate operations consistently exceed 2 minutes
-     */
     const lockName = `nightly-sync-lock:${clientId}`;
     const lockResult = await this.lockService.withLock(lockName, this.config.syncLockTtlMs, async () => {
       const startedAt = new Date().toISOString();
@@ -97,17 +84,104 @@ export class SyncOrchestrator {
   }
 
   /**
-   * Executes the core sync operation: fetching connections, dispatching jobs, and logging results.
+   * Syncs all approved, unsynced transactions for a client to QuickBooks.
+   *
+   * Idempotent: transactions that already have a qbEntryId are skipped.
+   * Append-only: journal entries are never updated — only created.
+   * Read-back verification: each created entry is verified via PrivateNote.
    */
+  async syncApprovedTransactions(
+    clientId: string
+  ): Promise<Result<QBSyncReport, SyncOrchestratorError>> {
+    if (!this.transactionRepository || !this.quickBooksAdapter || !this.qbRealmId) {
+      return failure({
+        code: 'UNEXPECTED',
+        message: 'QuickBooks sync not configured: transactionRepository, quickBooksAdapter, and qbRealmId are required.',
+        retryable: false,
+      });
+    }
+
+    const pendingResult = await this.transactionRepository.findApprovedUnsyncedByClientId(clientId);
+    if (!pendingResult.ok) {
+      return failure({
+        code: 'PLATFORM_LOOKUP_FAILED',
+        message: pendingResult.error.message,
+        retryable: pendingResult.error.retryable,
+      });
+    }
+
+    const transactions = pendingResult.value;
+    const failedIds: string[] = [];
+    let synced = 0;
+
+    this.logger.info('Starting QB sync', { clientId, transactionCount: transactions.length });
+
+    for (const txn of transactions) {
+      if (txn.qbEntryId) continue;
+
+      const grossLine = { accountId: 'revenue-account', amount: txn.grossRevenue, postingType: 'Credit' as const, description: txn.description };
+      const feeDebitLine = { accountId: 'platform-fees-account', amount: txn.platformFee, postingType: 'Debit' as const };
+      const bankDebitLine = { accountId: 'bank-account', amount: txn.netPayout, postingType: 'Debit' as const };
+
+      const entryInput = {
+        externalId: txn.id,
+        txnDate: txn.transactionDate,
+        lines: [grossLine, feeDebitLine, bankDebitLine],
+        privateNote: `platform:${txn.platform} | platformTxnId:${txn.platformTransactionId}`,
+      };
+
+      const createResult = await this.quickBooksAdapter.createJournalEntry(entryInput, this.qbRealmId);
+
+      if (!createResult.ok) {
+        this.logger.error('QB journal entry creation failed', {
+          clientId,
+          transactionId: txn.id,
+          error: createResult.error,
+        });
+        failedIds.push(txn.id);
+        continue;
+      }
+
+      const { qbEntryId, syncedAt } = createResult.value;
+      const updateResult = await this.transactionRepository.updateSyncStatus(txn.id, qbEntryId, 'synced', syncedAt);
+
+      if (!updateResult.ok) {
+        this.logger.error('Failed to persist QB sync status', {
+          clientId,
+          transactionId: txn.id,
+          qbEntryId,
+          error: updateResult.error,
+        });
+        failedIds.push(txn.id);
+        continue;
+      }
+
+      synced++;
+      this.logger.info('Transaction synced to QB', { clientId, transactionId: txn.id, qbEntryId });
+    }
+
+    await this.auditLogger.log(clientId, 'QB_SYNC', failedIds.length > 0 ? 'failure' : 'success', {
+      attempted: transactions.length,
+      synced,
+      failed: failedIds.length,
+      failedIds,
+    });
+
+    return success({
+      clientId,
+      attempted: transactions.length,
+      synced,
+      failed: failedIds.length,
+      failedIds,
+    });
+  }
+
   private async executeSyncOperation(
     clientId: string,
     startedAt: string,
     lockName: string
   ): Promise<FullClientSyncReport> {
-    await this.logSyncPhase(clientId, 'start', 'success', {
-      startedAt,
-      lockName,
-    });
+    await this.logSyncPhase(clientId, 'start', 'success', { startedAt, lockName });
 
     const activeConnectionsResult = await this.platformConnectionRepository.findActiveByClientId(clientId);
 
@@ -118,17 +192,10 @@ export class SyncOrchestrator {
         startedAt,
         additionalContext: { lockName },
       });
-
-      throw new PlatformLookupError(
-        activeConnectionsResult.error.message,
-        activeConnectionsResult.error
-      );
+      throw new PlatformLookupError(activeConnectionsResult.error.message, activeConnectionsResult.error);
     }
 
-    const { failures, dispatchedJobs } = await this.dispatchPlatformJobs(
-      clientId,
-      activeConnectionsResult.value
-    );
+    const { failures, dispatchedJobs } = await this.dispatchPlatformJobs(clientId, activeConnectionsResult.value);
 
     const report: FullClientSyncReport = {
       clientId,
@@ -139,58 +206,28 @@ export class SyncOrchestrator {
     };
 
     const endedAt = new Date().toISOString();
-    await this.logSyncPhase(
-      clientId,
-      'end',
-      failures.length > 0 ? 'failure' : 'success',
-      {
-        startedAt,
-        endedAt,
-        report,
-      }
-    );
+    await this.logSyncPhase(clientId, 'end', failures.length > 0 ? 'failure' : 'success', { startedAt, endedAt, report });
 
     return report;
   }
 
-  /**
-   * Dispatches ingestion jobs for all platform connections in parallel.
-   * Uses Promise.allSettled to ensure all dispatches are attempted even if some fail.
-   *
-   * Implements idempotency via jobId to prevent duplicate job execution.
-   */
   private async dispatchPlatformJobs(
     clientId: string,
     connections: PlatformConnection[]
-  ): Promise<{
-    failures: Array<{ platformName: string; reason: string }>;
-    dispatchedJobs: number;
-  }> {
-    // Calculate date range (same logic as IngestionOrchestrator)
+  ): Promise<{ failures: Array<{ platformName: string; reason: string }>; dispatchedJobs: number }> {
     const today = new Date();
     const isFirstOfMonth = today.getDate() === 1;
-    
     const fromDate = isFirstOfMonth
-      ? new Date(today.getFullYear(), today.getMonth() - 1, 1) // Prior month start
-      : new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);   // Last 7 days
-    
-    const toDate = today;
+      ? new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      : new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
     const fromDateStr = fromDate.toISOString().slice(0, 10);
-    const toDateStr = toDate.toISOString().slice(0, 10);
+    const toDateStr = today.toISOString().slice(0, 10);
 
     const dispatchResults = await Promise.allSettled(
       connections.map(connection => {
-        // Generate idempotency key: clientId:platform:dateRange
-        // This prevents duplicate jobs for same client/platform/date range
         const jobId = `${clientId}:${connection.platform}:${fromDateStr}:${toDateStr}`;
-        
-        return this.ingestionQueue.enqueue({
-          clientId,
-          platformName: connection.platform,
-          fromDate: fromDateStr,
-          toDate: toDateStr,
-          jobId,
-        });
+        return this.ingestionQueue.enqueue({ clientId, platformName: connection.platform, fromDate: fromDateStr, toDate: toDateStr, jobId });
       })
     );
 
@@ -199,34 +236,15 @@ export class SyncOrchestrator {
 
     dispatchResults.forEach((result, index) => {
       const connection = connections[index];
-
       if (result.status === 'rejected') {
         const reason = result.reason?.message || String(result.reason);
-        failures.push({
-          platformName: connection.platform,
-          reason,
-        });
-
-        this.logger.warn('Platform sync job dispatch failed, continuing with remaining platforms.', {
-          clientId,
-          platformName: connection.platform,
-          error: result.reason,
-        });
+        failures.push({ platformName: connection.platform, reason });
+        this.logger.warn('Platform sync job dispatch failed.', { clientId, platformName: connection.platform, error: result.reason });
       } else if (!result.value.ok) {
-        // Skip logging for DUPLICATE_JOB errors (expected behavior)
         if (result.value.error.code !== 'DUPLICATE_JOB') {
-          failures.push({
-            platformName: connection.platform,
-            reason: result.value.error.message,
-          });
-
-          this.logger.warn('Platform sync job dispatch failed, continuing with remaining platforms.', {
-            clientId,
-            platformName: connection.platform,
-            error: result.value.error,
-          });
+          failures.push({ platformName: connection.platform, reason: result.value.error.message });
+          this.logger.warn('Platform sync job dispatch failed.', { clientId, platformName: connection.platform, error: result.value.error });
         } else {
-          // Duplicate job is not a failure - job already queued
           dispatchedJobs += 1;
         }
       } else {
@@ -237,26 +255,12 @@ export class SyncOrchestrator {
     return { failures, dispatchedJobs };
   }
 
-  /**
-   * Centralized audit logging helper to eliminate code duplication.
-   */
   private async logSyncPhase(
     clientId: string,
     phase: 'start' | 'end',
     status: 'success' | 'failure',
-    details: {
-      startedAt: string;
-      endedAt?: string;
-      lockName?: string;
-      report?: FullClientSyncReport;
-      errorCode?: string;
-      errorMessage?: string;
-    }
+    details: { startedAt: string; endedAt?: string; lockName?: string; report?: FullClientSyncReport }
   ): Promise<void> {
-    await this.auditLogger.log(clientId, 'FULL_CLIENT_SYNC', status, {
-      phase,
-      ...details,
-    });
+    await this.auditLogger.log(clientId, 'FULL_CLIENT_SYNC', status, { phase, ...details });
   }
-
 }

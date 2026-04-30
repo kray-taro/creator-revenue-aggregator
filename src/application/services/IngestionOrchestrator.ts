@@ -1,20 +1,16 @@
-import { PlatformAdapterFactory } from '../factories/PlatformAdapterFactory';
+import type { PlatformAdapterFactory } from '../factories/PlatformAdapterFactory';
 import type { ITransaction, PlatformName } from '@domain/entities';
 import { validateTransaction, type ValidationError } from '@domain/services';
 import { success, type Result } from '@domain/shared';
-import type { RepositoryError } from '@domain/ports';
+import type { RepositoryError, IDeduplicationService, IConfidenceScoringService } from '@domain/ports';
 import { TransactionPersistenceService } from './TransactionPersistenceService';
 import { IngestionErrorHandler } from './IngestionErrorHandler';
 import { IngestionAuditService } from './IngestionAuditService';
 import { OrchestratorErrorHandler } from './OrchestratorErrorHandler';
 import { getPlatformConfig } from '@infrastructure/config/PlatformConfig';
 
-/**
- * Helper function for rate limiting delays between batches
- */
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => {
-    // @ts-ignore - setTimeout is available at runtime
     setTimeout(resolve, ms);
   });
 }
@@ -31,6 +27,7 @@ export interface IngestionRunReport {
   readonly fetched: number;
   readonly saved: number;
   readonly redTabMarked: number;
+  readonly duplicatesFound: number;
   readonly failures: ReadonlyArray<IngestionRecordFailure>;
 }
 
@@ -43,6 +40,7 @@ export interface IngestionRecordFailure {
 interface BatchProcessingResult {
   saved: number;
   redTabMarked: number;
+  duplicatesFound: number;
   failures: IngestionRecordFailure[];
 }
 
@@ -55,8 +53,11 @@ export interface IngestionOrchestratorError {
 }
 
 /**
- * Orchestrates the ingestion process by coordinating between adapters and services.
- * Follows GRASP Controller pattern - delegates responsibilities to specialized services.
+ * Orchestrates the ingestion pipeline:
+ *   Adapter → Validation → Deduplication → Confidence Scoring → Persistence
+ *
+ * Follows GRASP Controller pattern — delegates to specialized services.
+ * Deduplication and scoring are injected and optional (null = skip).
  */
 export class IngestionOrchestrator {
   private readonly persistenceService: TransactionPersistenceService;
@@ -65,10 +66,13 @@ export class IngestionOrchestrator {
   private readonly orchestratorErrorHandler: OrchestratorErrorHandler;
 
   constructor(
+    private readonly adapterFactory: PlatformAdapterFactory,
     persistenceService: TransactionPersistenceService,
     errorHandler: IngestionErrorHandler,
     auditService: IngestionAuditService,
-    private readonly logger: ILogger
+    private readonly logger: ILogger,
+    private readonly deduplicationService: IDeduplicationService | null = null,
+    private readonly confidenceScoringService: IConfidenceScoringService | null = null
   ) {
     this.persistenceService = persistenceService;
     this.errorHandler = errorHandler;
@@ -76,24 +80,20 @@ export class IngestionOrchestrator {
     this.orchestratorErrorHandler = new OrchestratorErrorHandler(auditService);
   }
 
-
   async run(clientId: string, platformName: string): Promise<Result<IngestionRunReport, IngestionOrchestratorError>> {
     return this.ingest(clientId, platformName);
   }
 
   async ingest(clientId: string, platformName: string): Promise<Result<IngestionRunReport, IngestionOrchestratorError>> {
-    const adapter = PlatformAdapterFactory.create(platformName);
+    const adapter = this.adapterFactory.create(platformName);
 
-    // Calculate date range:
-    // - On 1st of month: Full pull of prior month
-    // - Other days: Incremental pull of last 7 days (catches late-arriving transactions)
     const today = new Date();
     const isFirstOfMonth = today.getDate() === 1;
-    
+
     const fromDate = isFirstOfMonth
-      ? new Date(today.getFullYear(), today.getMonth() - 1, 1) // Prior month start
-      : new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);   // Last 7 days
-    
+      ? new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      : new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
     const toDate = today;
 
     this.logger.info('Ingestion date range calculated', {
@@ -114,20 +114,9 @@ export class IngestionOrchestrator {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown adapter error';
-      this.logger.error('Adapter threw unexpected exception', {
-        clientId,
-        platformName,
-        error: errorMessage,
-      });
+      this.logger.error('Adapter threw unexpected exception', { clientId, platformName, error: errorMessage });
 
-      await this.auditService.logAdapterFetchFailure(
-        clientId,
-        platformName,
-        'UNKNOWN',
-        errorMessage,
-        true,
-        false
-      );
+      await this.auditService.logAdapterFetchFailure(clientId, platformName, 'UNKNOWN', errorMessage, true, false);
 
       return this.orchestratorErrorHandler.transformError<IngestionOrchestratorError>(
         { code: 'UNKNOWN', message: errorMessage },
@@ -146,20 +135,13 @@ export class IngestionOrchestrator {
       });
 
       await this.auditService.logAdapterFetchFailure(
-        clientId,
-        platformName,
-        adapterResult.error.code,
-        adapterResult.error.message,
-        adapterResult.error.retryable,
-        isTerminal
+        clientId, platformName,
+        adapterResult.error.code, adapterResult.error.message,
+        adapterResult.error.retryable, isTerminal
       );
 
       if (isTerminal) {
-        await this.errorHandler.updatePlatformStatusToRed(
-          clientId,
-          platformName,
-          adapterResult.error.message
-        );
+        await this.errorHandler.updatePlatformStatusToRed(clientId, platformName, adapterResult.error.message);
       }
 
       return this.orchestratorErrorHandler.transformError<IngestionOrchestratorError>(
@@ -168,40 +150,31 @@ export class IngestionOrchestrator {
           defaultCode: 'ADAPTER_FAILURE',
           codeMapping: isTerminal ? { [adapterResult.error.code]: 'TERMINAL_ADAPTER_FAILURE' } : undefined,
         },
-        {
-          shouldRetry: !isTerminal,
-          redTabSuggested: true,
-        }
+        { shouldRetry: !isTerminal, redTabSuggested: true }
       );
     }
 
     const failures: IngestionRecordFailure[] = [];
     let saved = 0;
     let redTabMarked = 0;
+    let duplicatesFound = 0;
 
-    // Get platform-specific configuration for batch processing
     const platformConfig = getPlatformConfig(platformName as PlatformName);
     const { batchSize, batchDelayMs } = platformConfig;
 
-    this.logger.info('Using platform-specific batch configuration', {
-      clientId,
-      platformName,
-      batchSize,
-      batchDelayMs,
-    });
+    this.logger.info('Using platform-specific batch configuration', { clientId, platformName, batchSize, batchDelayMs });
 
-    // Process transactions in batches
     const records = adapterResult.value;
     for (let i = 0; i < records.length; i += batchSize) {
       const batch = records.slice(i, i + batchSize);
-      
+
       const batchResult = await this.processBatch(batch, clientId, platformName);
-      
+
       saved += batchResult.saved;
       redTabMarked += batchResult.redTabMarked;
+      duplicatesFound += batchResult.duplicatesFound;
       failures.push(...batchResult.failures);
 
-      // Rate limiting: delay between batches (except for the last batch)
       if (i + batchSize < records.length) {
         await delay(batchDelayMs);
       }
@@ -213,25 +186,18 @@ export class IngestionOrchestrator {
       fetched: adapterResult.value.length,
       saved,
       redTabMarked,
+      duplicatesFound,
       failures,
     });
   }
 
-  /**
-   * Processes a single batch of transactions
-   */
   private async processBatch(
     batch: ITransaction[],
     clientId: string,
     platformName: string
   ): Promise<BatchProcessingResult> {
-    // Prepare all transactions in the batch
-    const preparedBatch = batch.map(record => ({
-      ...record,
-      clientId,
-    }));
+    const preparedBatch = batch.map(record => ({ ...record, clientId }));
 
-    // Parallel validation of the batch
     const validationResults = await Promise.all(
       preparedBatch.map(async (prepared) => ({
         transaction: prepared,
@@ -239,7 +205,6 @@ export class IngestionOrchestrator {
       }))
     );
 
-    // Separate valid and invalid transactions
     const validTransactions: ITransaction[] = [];
     const invalidTransactions: Array<{ transaction: ITransaction; error: ValidationError }> = [];
 
@@ -251,130 +216,118 @@ export class IngestionOrchestrator {
       }
     }
 
-    // Process invalid and valid transactions in parallel
+    // Apply deduplication to valid transactions
+    let dedupedTransactions = validTransactions;
+    let batchDuplicatesFound = 0;
+
+    if (this.deduplicationService && validTransactions.length > 0) {
+      const dedupResult = await this.deduplicationService.checkBatch(validTransactions, clientId);
+      if (dedupResult.ok) {
+        batchDuplicatesFound = dedupResult.value.duplicatesFound;
+        dedupedTransactions = dedupResult.value.results.map(r => {
+          const fingerprint = r.fingerprint;
+          if (r.isDuplicate) {
+            return { ...r.transaction, deduplicationHash: fingerprint, status: 'pending_review' as const };
+          }
+          return { ...r.transaction, deduplicationHash: fingerprint };
+        });
+      } else {
+        this.logger.warn('Deduplication failed, proceeding without dedup', { clientId, platformName, error: dedupResult.error });
+      }
+    }
+
+    // Apply confidence scoring
+    if (this.confidenceScoringService && dedupedTransactions.length > 0) {
+      const scoringResult = await this.confidenceScoringService.scoreBatch(dedupedTransactions, clientId);
+      if (scoringResult.ok) {
+        dedupedTransactions = scoringResult.value.results.map(r => {
+          const status = r.category === 'RED' ? 'error' as const : r.transaction.status;
+          return { ...r.transaction, confidenceScore: r.score / 100, status };
+        });
+      } else {
+        this.logger.warn('Confidence scoring failed, proceeding without scores', { clientId, platformName, error: scoringResult.error });
+      }
+    }
+
     const [invalidResult, validResult] = await Promise.all([
       this.processInvalidTransactions(invalidTransactions, clientId, platformName),
-      this.processValidTransactions(validTransactions, clientId, platformName),
+      this.processValidTransactions(dedupedTransactions, clientId, platformName),
     ]);
 
-    // Combine results
     return {
       saved: invalidResult.saved + validResult.saved,
       redTabMarked: invalidResult.redTabMarked + validResult.redTabMarked,
+      duplicatesFound: batchDuplicatesFound,
       failures: [...invalidResult.failures, ...validResult.failures],
     };
   }
 
-  /**
-   * Processes invalid transactions by marking them as error status and persisting
-   */
   private async processInvalidTransactions(
     invalidTransactions: Array<{ transaction: ITransaction; error: ValidationError }>,
     clientId: string,
     platformName: string
   ): Promise<BatchProcessingResult> {
     if (invalidTransactions.length === 0) {
-      return { saved: 0, redTabMarked: 0, failures: [] };
+      return { saved: 0, redTabMarked: 0, duplicatesFound: 0, failures: [] };
     }
 
-    // Cache timestamp for consistent updatedAt across all transactions
     const now = new Date().toISOString();
-
-    // Mark transactions as error status
     const redTabTransactions = invalidTransactions.map(({ transaction }) => ({
       ...transaction,
       status: 'error' as const,
       updatedAt: now,
     }));
 
-    // Synchronous logging
     invalidTransactions.forEach(({ transaction, error }) => {
       this.logValidationFailure(clientId, platformName, transaction, error);
     });
 
-    // Async audit logging in parallel
     await Promise.all(
       invalidTransactions.map(({ transaction, error }) =>
         this.auditService.logValidationFailure(clientId, platformName, transaction, error)
       )
     );
 
-    // Bulk save error transactions
     const saveErrorResult = await this.persistenceService.saveTransactionsBulk(redTabTransactions);
 
     if (!saveErrorResult.ok) {
-      // Handle persistence failure
       const persistenceFailures = await this.handlePersistenceFailure(
-        redTabTransactions,
-        saveErrorResult.error,
-        clientId,
-        platformName,
-        'error'
+        redTabTransactions, saveErrorResult.error, clientId, platformName, 'error'
       );
-
-      return {
-        saved: 0,
-        redTabMarked: 0,
-        failures: persistenceFailures,
-      };
+      return { saved: 0, redTabMarked: 0, duplicatesFound: 0, failures: persistenceFailures };
     }
 
-    // Success: transactions saved with error status
     const validationFailures = invalidTransactions.map(({ transaction, error }) => ({
       transactionId: transaction.id,
       reason: 'VALIDATION_FAILURE' as const,
       details: error.message,
     }));
 
-    return {
-      saved: 0,
-      redTabMarked: saveErrorResult.value.length,
-      failures: validationFailures,
-    };
+    return { saved: 0, redTabMarked: saveErrorResult.value.length, duplicatesFound: 0, failures: validationFailures };
   }
 
-  /**
-   * Processes valid transactions by persisting them
-   */
   private async processValidTransactions(
     validTransactions: ITransaction[],
     clientId: string,
     platformName: string
   ): Promise<BatchProcessingResult> {
     if (validTransactions.length === 0) {
-      return { saved: 0, redTabMarked: 0, failures: [] };
+      return { saved: 0, redTabMarked: 0, duplicatesFound: 0, failures: [] };
     }
 
-    // Bulk save valid transactions
     const savedResult = await this.persistenceService.saveTransactionsBulk(validTransactions);
 
     if (!savedResult.ok) {
-      // Handle persistence failure
       const persistenceFailures = await this.handlePersistenceFailure(
-        validTransactions,
-        savedResult.error,
-        clientId,
-        platformName,
+        validTransactions, savedResult.error, clientId, platformName,
         validTransactions[0]?.status || 'pending'
       );
-
-      return {
-        saved: 0,
-        redTabMarked: 0,
-        failures: persistenceFailures,
-      };
+      return { saved: 0, redTabMarked: 0, duplicatesFound: 0, failures: persistenceFailures };
     }
 
-    return {
-      saved: savedResult.value.length,
-      redTabMarked: 0,
-      failures: [],
-    };
+    return { saved: savedResult.value.length, redTabMarked: 0, duplicatesFound: 0, failures: [] };
   }
 
-  /**
-   * Handles persistence failures by logging to audit and tracking failures
-   */
   private async handlePersistenceFailure(
     transactions: ITransaction[],
     error: RepositoryError,
@@ -382,20 +335,12 @@ export class IngestionOrchestrator {
     platformName: string,
     statusAttempted: string
   ): Promise<IngestionRecordFailure[]> {
-    // Log all persistence failures in parallel
     await Promise.all(
       transactions.map((transaction) =>
-        this.auditService.logPersistenceFailure(
-          clientId,
-          platformName,
-          transaction,
-          error,
-          statusAttempted
-        )
+        this.auditService.logPersistenceFailure(clientId, platformName, transaction, error, statusAttempted)
       )
     );
 
-    // Return failure records
     return transactions.map((transaction) => ({
       transactionId: transaction.id,
       reason: 'PERSISTENCE_FAILURE' as const,
@@ -419,5 +364,3 @@ export class IngestionOrchestrator {
     });
   }
 }
-
-

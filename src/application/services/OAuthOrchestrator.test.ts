@@ -71,6 +71,7 @@ describe('OAuthOrchestrator', () => {
     } as jest.Mocked<IOAuthStateStore>;
 
     mockConnectionRepo = {
+      findById: jest.fn().mockResolvedValue({ ok: true, value: makeConnection() }),
       findActiveByClientId: jest.fn(),
       saveTokens: jest.fn().mockResolvedValue({ ok: true, value: true }),
       getTokens: jest.fn(),
