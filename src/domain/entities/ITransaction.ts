@@ -48,6 +48,7 @@ export type PlatformName =
   | 'substack'
   | 'shopify'
   | 'stripe'
+  | 'quickbooks'
   | 'unknown';
 
 export type SourceHierarchy = 'primary' | 'processor';

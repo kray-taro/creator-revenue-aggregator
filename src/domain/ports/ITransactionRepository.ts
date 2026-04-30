@@ -1,4 +1,4 @@
-import type { ITransaction } from '../entities/ITransaction';
+import type { ITransaction, QbSyncStatus } from '../entities/ITransaction';
 import type { Result } from '../shared/Result';
 
 export interface RepositoryError {
@@ -12,4 +12,20 @@ export interface ITransactionRepository {
   saveBulk(transactions: ITransaction[]): Promise<Result<ITransaction[], RepositoryError>>;
   findById(id: string): Promise<Result<ITransaction, RepositoryError>>;
   findByClientId(clientId: string): Promise<Result<ITransaction[], RepositoryError>>;
+
+  findByFingerprints(
+    clientId: string,
+    fingerprints: string[]
+  ): Promise<Result<ITransaction[], RepositoryError>>;
+
+  findApprovedUnsyncedByClientId(
+    clientId: string
+  ): Promise<Result<ITransaction[], RepositoryError>>;
+
+  updateSyncStatus(
+    id: string,
+    qbEntryId: string,
+    status: QbSyncStatus,
+    syncedAt: string
+  ): Promise<Result<ITransaction, RepositoryError>>;
 }

@@ -33,6 +33,33 @@ export class PgPlatformConnectionRepository implements IPlatformConnectionReposi
     private readonly encryptionService: IEncryptionService
   ) {}
 
+  async findById(
+    connectionId: string
+  ): Promise<Result<PlatformConnection, PlatformConnectionRepositoryError>> {
+    const sql = `
+      SELECT id, client_id, platform, status, expires_at, scopes,
+      platform_user_id, last_health_check_at, token_refreshed_at
+      FROM platform_connections
+      WHERE id = $1
+      LIMIT 1;
+    `;
+
+    try {
+      const result = await this.pgClient.query<PlatformConnectionRow>(sql, [connectionId]);
+      const row = result.rows[0];
+      if (!row) {
+        return failure({
+          code: 'NOT_FOUND',
+          message: `Platform connection not found: ${connectionId}`,
+          retryable: false,
+        });
+      }
+      return success(this.toEntity(row));
+    } catch (error) {
+      return failure(this.toError(error));
+    }
+  }
+
   async findActiveByClientId(
     clientId: string
   ): Promise<Result<PlatformConnection[], PlatformConnectionRepositoryError>> {

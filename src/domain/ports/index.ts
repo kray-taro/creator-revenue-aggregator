@@ -50,3 +50,10 @@ export type {
   RawResponseArchivalError
 } from './IRawResponseArchivalService';
 export type { ITransactionRepository, RepositoryError } from './ITransactionRepository';
+export type {
+  IQuickBooksAdapter,
+  QBJournalEntryInput,
+  QBJournalEntryLine,
+  QBJournalEntryResult,
+  QBSyncError,
+} from './IQuickBooksAdapter';

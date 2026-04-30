@@ -7,6 +7,7 @@ import { StripeOAuthStrategy } from './strategies/StripeOAuthStrategy';
 import { ShopifyOAuthStrategy } from './strategies/ShopifyOAuthStrategy';
 import { GumroadOAuthStrategy } from './strategies/GumroadOAuthStrategy';
 import { SubstackOAuthStrategy } from './strategies/SubstackOAuthStrategy';
+import { QuickBooksOAuthStrategy } from './strategies/QuickBooksOAuthStrategy';
 
 type StrategyConstructor = new (
   clientId: string,
@@ -21,6 +22,7 @@ const STRATEGY_REGISTRY: Partial<Record<PlatformName, StrategyConstructor>> = {
   shopify: ShopifyOAuthStrategy,
   gumroad: GumroadOAuthStrategy,
   substack: SubstackOAuthStrategy,
+  quickbooks: QuickBooksOAuthStrategy,
 };
 
 /**

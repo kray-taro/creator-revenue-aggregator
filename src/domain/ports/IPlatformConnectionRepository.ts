@@ -35,6 +35,7 @@ export interface PlatformConnectionRepositoryError {
 }
 
 export interface IPlatformConnectionRepository {
+  findById(connectionId: string): Promise<Result<PlatformConnection, PlatformConnectionRepositoryError>>;
   findActiveByClientId(clientId: string): Promise<Result<PlatformConnection[], PlatformConnectionRepositoryError>>;
   saveTokens(connectionId: string, tokens: PlatformTokenBundle): Promise<Result<boolean, PlatformConnectionRepositoryError>>;
   getTokens(connectionId: string): Promise<Result<PlatformTokenBundle, PlatformConnectionRepositoryError>>;
