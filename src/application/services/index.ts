@@ -7,4 +7,8 @@ export { OrchestratorErrorHandler } from './OrchestratorErrorHandler';
 export { OAuthOrchestrator } from './OAuthOrchestrator';
 export { OAuthAuditService } from './OAuthAuditService';
 export { ClientOnboardingService } from './ClientOnboardingService';
+export { NightlyIngestionDispatcher } from './NightlyIngestionDispatcher';
+export { TokenHealthMonitor } from './TokenHealthMonitor';
+export { ConfidenceScoringService } from './ConfidenceScoringService';
+export { DeduplicationService } from './DeduplicationService';
 export { AuthenticationService } from './AuthenticationService';
