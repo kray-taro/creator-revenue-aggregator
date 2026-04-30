@@ -40,6 +40,12 @@ interface PatreonMembersResponse {
 export class PatreonAdapter extends AbstractPlatformAdapter {
   readonly platform: PlatformName = 'patreon';
 
+  // TODO: [Phase 2] Exact Accounting
+  // The current 8% blended fee is an approximation for Phase 1. Patreon fees vary heavily
+  // by creator tier (Lite: 5%, Pro: 8%, Premium: 12%) plus payment processing (2.9% + $0.30).
+  // Over a year, this approximation will diverge by hundreds of dollars from the actual 1099 form.
+  // For Phase 2, query the `/campaigns` endpoint to retrieve the exact creator tier percentage,
+  // or cross-reference the exact `/payouts` endpoint to back-calculate the exact fee.
   private static readonly BLENDED_FEE_RATIO = 0.08;
   private static readonly CAMPAIGNS_URL = 'https://www.patreon.com/api/oauth2/v2/campaigns';
 

@@ -104,7 +104,7 @@ export abstract class AbstractPlatformAdapter implements IPlatformAdapter {
       }
 
       allTransactions.push(...pageTransactions);
-      cursor = this.extractNextCursor(rawPage as Record<string, unknown>);
+      cursor = this.extractNextCursor(rawPage as Record<string, unknown>, pageResult.value.headers);
       pageIndex++;
     } while (cursor !== null && pageIndex < MAX_PAGES);
 
@@ -114,7 +114,7 @@ export abstract class AbstractPlatformAdapter implements IPlatformAdapter {
   protected abstract buildRequestUrl(input: FetchPlatformDataInput, cursor: string | null): string;
   protected abstract buildRequestHeaders(accessToken: string): Record<string, string>;
   protected abstract transformPage(raw: Record<string, unknown>, input: FetchPlatformDataInput): ITransaction[];
-  protected abstract extractNextCursor(raw: Record<string, unknown>): string | null;
+  protected abstract extractNextCursor(raw: Record<string, unknown>, headers?: Record<string, string>): string | null;
 
   protected makeTransactionId(prefix: string, ...parts: string[]): string {
     return `${prefix}-${parts.join('-')}`;

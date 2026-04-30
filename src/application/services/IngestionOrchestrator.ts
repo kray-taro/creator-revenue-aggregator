@@ -1,13 +1,14 @@
 import type { PlatformAdapterFactory } from '../factories/PlatformAdapterFactory';
 import type { ITransaction, PlatformName } from '@domain/entities';
 import { validateTransaction, type ValidationError } from '@domain/services';
-import { success, type Result } from '@domain/shared';
+import { success, failure, type Result } from '@domain/shared';
 import type { RepositoryError, IDeduplicationService, IConfidenceScoringService } from '@domain/ports';
 import { TransactionPersistenceService } from './TransactionPersistenceService';
 import { IngestionErrorHandler } from './IngestionErrorHandler';
 import { IngestionAuditService } from './IngestionAuditService';
 import { OrchestratorErrorHandler } from './OrchestratorErrorHandler';
 import { getPlatformConfig } from '@infrastructure/config/PlatformConfig';
+import type { IPlatformConnectionRepository } from '@domain/ports';
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => {
@@ -71,6 +72,7 @@ export class IngestionOrchestrator {
     errorHandler: IngestionErrorHandler,
     auditService: IngestionAuditService,
     private readonly logger: ILogger,
+    private readonly connectionRepo: IPlatformConnectionRepository,
     private readonly deduplicationService: IDeduplicationService | null = null,
     private readonly confidenceScoringService: IConfidenceScoringService | null = null
   ) {
@@ -104,13 +106,26 @@ export class IngestionOrchestrator {
       toDate: toDate.toISOString().slice(0, 10),
     });
 
+    const connResult = await this.connectionRepo.findByClientAndPlatform(clientId, platformName as PlatformName);
+    if (!connResult.ok || !connResult.value) {
+      this.logger.error('Connection not found', { clientId, platformName });
+      return failure({
+        code: 'ADAPTER_FAILURE',
+        message: 'Connection not found',
+        retryable: false,
+        shouldRetry: false,
+        redTabSuggested: true,
+      });
+    }
+
     let adapterResult;
     try {
       adapterResult = await adapter.fetchData({
         clientId,
         fromDate: fromDate.toISOString().slice(0, 10),
         toDate: toDate.toISOString().slice(0, 10),
-        connectionId: `${clientId}:${platformName}`,
+        connectionId: connResult.value.id,
+        platformUserId: connResult.value.platformUserId,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown adapter error';

@@ -177,6 +177,7 @@ export async function buildContainer(config: IConfig): Promise<Container> {
     errorHandler,
     ingestionAuditService,
     logger,
+    connectionRepo,
     deduplicationService,
     confidenceScoringService
   );

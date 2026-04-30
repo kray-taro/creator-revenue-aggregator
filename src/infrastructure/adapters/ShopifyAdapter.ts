@@ -48,14 +48,8 @@ export class ShopifyAdapter extends AbstractPlatformAdapter {
   private static readonly DEFAULT_FEE_RATIO = 0.029;
   private static readonly DEFAULT_FEE_FIXED = 0.30;
 
-  private shopDomain: string | null = null;
-
-  setShopDomain(domain: string): void {
-    this.shopDomain = domain;
-  }
-
   protected buildRequestUrl(input: FetchPlatformDataInput, cursor: string | null): string {
-    const domain = this.shopDomain ?? 'placeholder.myshopify.com';
+    const domain = input.platformUserId ?? 'placeholder.myshopify.com';
     const base = `https://${domain}/admin/api/2024-01/orders.json`;
 
     if (cursor) {
@@ -111,8 +105,24 @@ export class ShopifyAdapter extends AbstractPlatformAdapter {
     });
   }
 
-  protected extractNextCursor(_raw: Record<string, unknown>): string | null {
-    return null;
+  protected extractNextCursor(_raw: Record<string, unknown>, headers?: Record<string, string>): string | null {
+    if (!headers) return null;
+    const linkHeader = headers['link'] || headers['Link'];
+    if (!linkHeader) return null;
+
+    // Link header looks like: <https://shop.myshopify.com/...&page_info=123>; rel="next"
+    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+    if (!nextMatch) return null;
+
+    const nextUrlStr = nextMatch[1];
+    if (!nextUrlStr) return null;
+
+    try {
+      const url = new URL(nextUrlStr);
+      return url.searchParams.get('page_info');
+    } catch {
+      return null;
+    }
   }
 
   override async fetchData(input: FetchPlatformDataInput) {

@@ -142,31 +142,37 @@ export class NightlyIngestionDispatcher {
     let duplicates = 0;
     const failures: Array<{ clientId: string; platform: string; code: string; message: string }> = [];
 
-    for (const conn of connections) {
-      const job = this.buildJob(conn, dateKey, fromDate, toDate);
-      const result = await this.queue.enqueue(job);
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < connections.length; i += BATCH_SIZE) {
+      const batch = connections.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (conn) => {
+          const job = this.buildJob(conn, dateKey, fromDate, toDate);
+          const result = await this.queue.enqueue(job);
 
-      if (result.ok) {
-        enqueued += 1;
-        continue;
-      }
+          if (result.ok) {
+            enqueued += 1;
+            return;
+          }
 
-      if (result.error.code === 'DUPLICATE_JOB') {
-        duplicates += 1;
-        continue;
-      }
+          if (result.error.code === 'DUPLICATE_JOB') {
+            duplicates += 1;
+            return;
+          }
 
-      failures.push({
-        clientId: conn.clientId,
-        platform: conn.platform,
-        code: result.error.code,
-        message: result.error.message,
-      });
-      this.logger.warn('Nightly dispatch: enqueue failed for connection.', {
-        clientId: conn.clientId,
-        platform: conn.platform,
-        error: result.error,
-      });
+          failures.push({
+            clientId: conn.clientId,
+            platform: conn.platform,
+            code: result.error.code,
+            message: result.error.message,
+          });
+          this.logger.warn('Nightly dispatch: enqueue failed for connection.', {
+            clientId: conn.clientId,
+            platform: conn.platform,
+            error: result.error,
+          });
+        })
+      );
     }
 
     const report: NightlyIngestionDispatchReport = {

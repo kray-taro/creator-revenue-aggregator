@@ -50,7 +50,7 @@ export interface TokenHealthMonitorOptions {
 }
 
 const DEFAULT_SCAN_WINDOW_DAYS = 30;
-const DEFAULT_IDEMPOTENCY_TTL_SECONDS = 48 * 3600; // 48 hours
+const DEFAULT_IDEMPOTENCY_TTL_SECONDS = 30 * 24 * 3600; // 30 days
 
 /**
  * Daily OAuth token health monitor (US-901 plumbing).
@@ -103,76 +103,80 @@ export class TokenHealthMonitor {
     let failures = 0;
     const bucketCounts = { bucket30: 0, bucket14: 0, bucket7: 0, bucket0: 0 };
 
-    for (const conn of connections) {
-      if (!conn.expiresAt) {
-        // Connection has no expiry; skip.
-        continue;
-      }
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < connections.length; i += BATCH_SIZE) {
+      const batch = connections.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (conn) => {
+          if (!conn.expiresAt) {
+            return;
+          }
 
-      const daysRemaining = this.computeDaysRemaining(conn.expiresAt, now);
-      const bucket = this.assignBucket(daysRemaining);
+          const daysRemaining = this.computeDaysRemaining(conn.expiresAt, now);
+          const bucket = this.assignBucket(daysRemaining);
 
-      if (bucket === null) {
-        // Outside bucket thresholds; skip.
-        continue;
-      }
+          if (bucket === null) {
+            return;
+          }
 
-      this.incrementBucketCount(bucketCounts, bucket);
+          this.incrementBucketCount(bucketCounts, bucket);
 
-      const idempotencyKey = this.buildIdempotencyKey(conn.id, bucket);
-      const alreadyNotified = await this.checkIdempotency(idempotencyKey);
+          const idempotencyKey = this.buildIdempotencyKey(conn.id, bucket);
+          const alreadyNotified = await this.checkIdempotency(idempotencyKey);
 
-      if (alreadyNotified) {
-        notificationsSkipped += 1;
-        continue;
-      }
+          if (alreadyNotified) {
+            notificationsSkipped += 1;
+            return;
+          }
 
-      // Send notification.
-      const notifyResult = await this.notificationService.notifyTokenExpiring({
-        clientId: conn.clientId,
-        connectionId: conn.id,
-        platform: conn.platform,
-        daysRemaining,
-        bucket,
-        expiresAt: conn.expiresAt,
-      });
-
-      if (!notifyResult.ok) {
-        this.logger.warn('Token health monitor: notification failed.', {
-          connectionId: conn.id,
-          platform: conn.platform,
-          bucket,
-          error: notifyResult.error,
-        });
-        failures += 1;
-        continue;
-      }
-
-      notificationsSent += 1;
-
-      // Mark as notified.
-      await this.setIdempotency(idempotencyKey);
-
-      // If bucket is 0 (expired), update platform status to RED.
-      if (bucket === 0) {
-        const statusResult = await this.statusRepo.updateStatus(
-          conn.clientId,
-          conn.platform,
-          'RED',
-          `OAuth token expired at ${conn.expiresAt}`
-        );
-
-        if (statusResult.ok) {
-          statusUpdates += 1;
-        } else {
-          this.logger.warn('Token health monitor: status update failed.', {
+          // Send notification.
+          const notifyResult = await this.notificationService.notifyTokenExpiring({
+            clientId: conn.clientId,
             connectionId: conn.id,
             platform: conn.platform,
-            error: statusResult.error,
+            daysRemaining,
+            bucket,
+            expiresAt: conn.expiresAt,
           });
-          failures += 1;
-        }
-      }
+
+          if (!notifyResult.ok) {
+            this.logger.warn('Token health monitor: notification failed.', {
+              connectionId: conn.id,
+              platform: conn.platform,
+              bucket,
+              error: notifyResult.error,
+            });
+            failures += 1;
+            return;
+          }
+
+          notificationsSent += 1;
+
+          // Mark as notified.
+          await this.setIdempotency(idempotencyKey);
+
+          // If bucket is 0 (expired), update platform status to RED.
+          if (bucket === 0) {
+            const statusResult = await this.statusRepo.updateStatus(
+              conn.clientId,
+              conn.platform,
+              'RED',
+              `OAuth token expired at ${conn.expiresAt}`
+            );
+
+            if (statusResult.ok) {
+              statusUpdates += 1;
+            } else {
+              this.logger.warn('Token health monitor: status update failed.', {
+                connectionId: conn.id,
+                platform: conn.platform,
+                error: statusResult.error,
+              });
+              failures += 1;
+            }
+          }
+        })
+      );
     }
 
     const report: TokenHealthMonitorReport = {
@@ -197,7 +201,12 @@ export class TokenHealthMonitor {
 
   private computeDaysRemaining(expiresAt: string, now: Date): number {
     const expiryDate = new Date(expiresAt);
-    const diffMs = expiryDate.getTime() - now.getTime();
+    
+    // Use UTC midnights to avoid DST calculation errors
+    const utcExpiry = Date.UTC(expiryDate.getUTCFullYear(), expiryDate.getUTCMonth(), expiryDate.getUTCDate());
+    const utcNow = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    
+    const diffMs = utcExpiry - utcNow;
     return Math.floor(diffMs / (24 * 3600 * 1000));
   }
 
@@ -253,8 +262,9 @@ export class TokenHealthMonitor {
         key,
         error: err instanceof Error ? err.message : String(err),
       });
-      // Fail open: if Redis is down, allow the notification to proceed.
-      return false;
+      // Fail closed: if Redis is down, we skip sending the notification
+      // to avoid risking duplicate spam to thousands of clients.
+      return true;
     }
   }
 
