@@ -4,4 +4,8 @@ export interface IConfig {
   readonly appSecret: string;
   readonly encryptionKey: string;
   readonly nodeEnv: 'development' | 'test' | 'production';
+  readonly oauthRedirectBaseUrl: string;
+  readonly oauthStateTtlMs: number;
+  readonly jwtAccessExpiry: number;
+  readonly jwtRefreshExpiry: number;
 }
