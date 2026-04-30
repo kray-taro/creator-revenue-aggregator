@@ -21,6 +21,12 @@ export type { IDistributedLockService, DistributedLockError } from './IDistribut
 export type { IEncryptionService } from './IEncryptionService';
 export type { IIngestionJobQueue, IngestionJobRequest, IngestionQueueError } from './IIngestionJobQueue';
 export type {
+  INotificationService,
+  NotificationServiceError,
+  TokenExpiryBucket,
+  TokenExpiryNotification,
+} from './INotificationService';
+export type {
   IOAuthService,
   OAuthPlatformConfig,
   OAuthTokenSet,
