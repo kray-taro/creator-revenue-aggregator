@@ -45,7 +45,7 @@ export class PatreonAdapter extends AbstractPlatformAdapter {
 
   private campaignId: string | null = null;
 
-  protected buildRequestUrl(input: FetchPlatformDataInput, cursor: string | null): string {
+  protected buildRequestUrl(_input: FetchPlatformDataInput, cursor: string | null): string {
     const campaignId = this.campaignId ?? 'me';
     const fields = [
       'last_charge_date',

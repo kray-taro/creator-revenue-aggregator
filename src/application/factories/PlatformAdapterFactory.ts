@@ -1,13 +1,12 @@
 import type { PlatformName } from '@domain/entities';
 import type { IPlatformAdapter, IPlatformConnectionRepository, IEncryptionService, IRawResponseArchivalService } from '@domain/ports';
-import { MockAdapter } from './MockAdapter';
-import { UnknownPlatformAdapter } from './UnknownPlatformAdapter';
-import { YouTubeAdapter } from './YouTubeAdapter';
-import { PatreonAdapter } from './PatreonAdapter';
-import { GumroadAdapter } from './GumroadAdapter';
-import { SubstackAdapter } from './SubstackAdapter';
-import { ShopifyAdapter } from './ShopifyAdapter';
-import { StripeAdapter } from './StripeAdapter';
+import { UnknownPlatformAdapter } from '@infrastructure/adapters/UnknownPlatformAdapter';
+import { YouTubeAdapter } from '@infrastructure/adapters/YouTubeAdapter';
+import { PatreonAdapter } from '@infrastructure/adapters/PatreonAdapter';
+import { GumroadAdapter } from '@infrastructure/adapters/GumroadAdapter';
+import { SubstackAdapter } from '@infrastructure/adapters/SubstackAdapter';
+import { ShopifyAdapter } from '@infrastructure/adapters/ShopifyAdapter';
+import { StripeAdapter } from '@infrastructure/adapters/StripeAdapter';
 
 /**
  * Factory for platform ingestion adapters.
@@ -27,8 +26,6 @@ export class PlatformAdapterFactory {
     const normalized = platformName.toLowerCase() as PlatformName;
 
     switch (normalized) {
-      case 'mock':
-        return new MockAdapter();
 
       case 'youtube':
         return new YouTubeAdapter(this.connectionRepo, this.encryptionService, this.archivalService);

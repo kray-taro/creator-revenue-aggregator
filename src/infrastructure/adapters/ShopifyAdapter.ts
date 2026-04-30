@@ -111,7 +111,7 @@ export class ShopifyAdapter extends AbstractPlatformAdapter {
     });
   }
 
-  protected extractNextCursor(raw: Record<string, unknown>): string | null {
+  protected extractNextCursor(_raw: Record<string, unknown>): string | null {
     return null;
   }
 
