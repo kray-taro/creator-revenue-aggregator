@@ -68,4 +68,13 @@ export interface IPlatformConnectionRepository {
    * Used by OAuth health monitoring.
    */
   findExpiringConnections(withinDays: number): Promise<Result<PlatformConnection[], PlatformConnectionRepositoryError>>;
+
+  /**
+   * Finds all connections with status = 'active' across all clients.
+   * Used by the nightly ingestion dispatcher (US-102 fan-out).
+   * Optional `clientIdFilter` narrows the scope for manual re-runs.
+   */
+  findAllActive(
+    clientIdFilter?: string
+  ): Promise<Result<PlatformConnection[], PlatformConnectionRepositoryError>>;
 }

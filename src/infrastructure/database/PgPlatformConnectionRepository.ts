@@ -263,6 +263,28 @@ export class PgPlatformConnectionRepository implements IPlatformConnectionReposi
     }
   }
 
+  async findAllActive(
+    clientIdFilter?: string
+  ): Promise<Result<PlatformConnection[], PlatformConnectionRepositoryError>> {
+    const baseSql = `
+      SELECT id, client_id, platform, status, expires_at, scopes,
+             platform_user_id, last_health_check_at, token_refreshed_at
+      FROM platform_connections
+      WHERE status = 'active'
+    `;
+    const sql = clientIdFilter
+      ? `${baseSql} AND client_id = $1 ORDER BY client_id, platform;`
+      : `${baseSql} ORDER BY client_id, platform;`;
+    const params = clientIdFilter ? [clientIdFilter] : [];
+
+    try {
+      const result = await this.pgClient.query<PlatformConnectionRow>(sql, params);
+      return success(result.rows.map(row => this.toEntity(row)));
+    } catch (error) {
+      return failure(this.toError(error));
+    }
+  }
+
   private toEntity(row: PlatformConnectionRow): PlatformConnection {
     return {
       id: row.id,
