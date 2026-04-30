@@ -10,7 +10,12 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "start": "node dist/index.js",
+    "start:api": "PROCESS_ROLE=api node dist/index.js",
+    "start:worker": "PROCESS_ROLE=worker node dist/index.js",
+    "start:scheduler": "PROCESS_ROLE=scheduler node dist/index.js",
+    "migrate": "ts-node src/infrastructure/database/migrations/runner.ts"
   },
   "keywords": [
     "revenue",
@@ -23,6 +28,7 @@
   "devDependencies": {
     "@types/jest": "^29.5.12",
     "@types/node": "^20.11.19",
+    "@types/pg": "^8.10.9",
     "@typescript-eslint/eslint-plugin": "^7.0.1",
     "@typescript-eslint/parser": "^7.0.1",
     "eslint": "^8.56.0",
