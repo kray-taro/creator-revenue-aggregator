@@ -185,6 +185,71 @@ export class PgTransactionRepository implements ITransactionRepository {
     }
   }
 
+  async findByFingerprints(
+    clientId: string,
+    fingerprints: string[]
+  ): Promise<Result<ITransaction[], RepositoryError>> {
+    if (fingerprints.length === 0) return success([]);
+    const query = `
+      SELECT * FROM transactions
+      WHERE client_id = $1
+        AND deduplication_hash = ANY($2::varchar[])
+      ORDER BY created_at ASC;
+    `;
+    try {
+      const result = await this.pgClient.query<TransactionRow>(query, [clientId, fingerprints]);
+      return success(result.rows.map(row => this.toDomain(row)));
+    } catch (error) {
+      return failure(this.toRepositoryError(error));
+    }
+  }
+
+  async findApprovedUnsyncedByClientId(
+    clientId: string
+  ): Promise<Result<ITransaction[], RepositoryError>> {
+    const query = `
+      SELECT * FROM transactions
+      WHERE client_id = $1
+        AND status = 'approved'
+        AND qb_entry_id IS NULL
+      ORDER BY transaction_date ASC;
+    `;
+    try {
+      const result = await this.pgClient.query<TransactionRow>(query, [clientId]);
+      return success(result.rows.map(row => this.toDomain(row)));
+    } catch (error) {
+      return failure(this.toRepositoryError(error));
+    }
+  }
+
+  async updateSyncStatus(
+    id: string,
+    qbEntryId: string,
+    status: ITransaction['qbSyncStatus'],
+    syncedAt: string
+  ): Promise<Result<ITransaction, RepositoryError>> {
+    const query = `
+      UPDATE transactions
+      SET qb_entry_id = $2,
+          qb_sync_status = $3,
+          synced_at = $4,
+          status = 'synced',
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *;
+    `;
+    try {
+      const result = await this.pgClient.query<TransactionRow>(query, [id, qbEntryId, status, syncedAt]);
+      const row = result.rows[0];
+      if (!row) {
+        return failure({ code: 'NOT_FOUND', message: `Transaction not found for id=${id}.`, retryable: false });
+      }
+      return success(this.toDomain(row));
+    } catch (error) {
+      return failure(this.toRepositoryError(error));
+    }
+  }
+
   private buildTransactionParams(transaction: ITransaction, now: string): readonly unknown[] {
     return [
       transaction.id,

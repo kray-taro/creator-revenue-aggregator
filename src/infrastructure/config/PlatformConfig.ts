@@ -70,6 +70,12 @@ const PLATFORM_CONFIGS: Record<PlatformName, PlatformConfig> = {
     maxRetries: 5,        // Most retries due to highest volume
     timeoutMs: 30000,
   },
+  quickbooks: {
+    batchSize: 30,        // QuickBooks API has a strict 30 operations per batch limit
+    batchDelayMs: 500,    // Conservative rate limiting
+    maxRetries: 3,
+    timeoutMs: 30000,
+  },
   unknown: {
     batchSize: 50,        // Conservative batch size for unknown platforms
     batchDelayMs: 200,    // Conservative rate limiting

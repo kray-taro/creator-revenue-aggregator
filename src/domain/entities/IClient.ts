@@ -3,6 +3,7 @@
  */
 export interface IClient {
   readonly id: string;
+  readonly bookkeeperId: string;
   readonly name: string;
   readonly email: string;
 

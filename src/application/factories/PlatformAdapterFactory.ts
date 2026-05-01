@@ -1,30 +1,52 @@
-import type { PlatformName } from '../../domain/entities/ITransaction';
-import type { IPlatformAdapter } from '../../domain/ports/IPlatformAdapter';
-import { MockAdapter } from '../../infrastructure/adapters/MockAdapter';
-import { NotImplementedPlatformAdapter } from '../../infrastructure/adapters/NotImplementedPlatformAdapter';
-import { UnknownPlatformAdapter } from '../../infrastructure/adapters/UnknownPlatformAdapter';
+import type { PlatformName } from '@domain/entities';
+import type { IPlatformAdapter, IPlatformConnectionRepository, IEncryptionService, IRawResponseArchivalService } from '@domain/ports';
+import { UnknownPlatformAdapter } from '@infrastructure/adapters/UnknownPlatformAdapter';
+import { YouTubeAdapter } from '@infrastructure/adapters/YouTubeAdapter';
+import { PatreonAdapter } from '@infrastructure/adapters/PatreonAdapter';
+import { GumroadAdapter } from '@infrastructure/adapters/GumroadAdapter';
+import { SubstackAdapter } from '@infrastructure/adapters/SubstackAdapter';
+import { ShopifyAdapter } from '@infrastructure/adapters/ShopifyAdapter';
+import { StripeAdapter } from '@infrastructure/adapters/StripeAdapter';
 
-const SUPPORTED_PLATFORMS: ReadonlySet<string> = new Set([
-  'youtube',
-  'patreon',
-  'gumroad',
-  'substack',
-  'shopify',
-  'stripe',
-]);
-
+/**
+ * Factory for platform ingestion adapters.
+ * Now instance-based (not static) so it can accept infrastructure dependencies
+ * that the real adapters require (repository, encryption, archival).
+ *
+ * OCP: adding a new platform requires only a new adapter class and one line here.
+ */
 export class PlatformAdapterFactory {
-  static create(platformName: string): IPlatformAdapter {
-    const normalized = platformName.toLowerCase();
+  constructor(
+    private readonly connectionRepo: IPlatformConnectionRepository,
+    private readonly encryptionService: IEncryptionService,
+    private readonly archivalService: IRawResponseArchivalService | null = null
+  ) {}
 
-    if (normalized === 'mock') {
-      return new MockAdapter();
+  create(platformName: string): IPlatformAdapter {
+    const normalized = platformName.toLowerCase() as PlatformName;
+
+    switch (normalized) {
+
+      case 'youtube':
+        return new YouTubeAdapter(this.connectionRepo, this.encryptionService, this.archivalService);
+
+      case 'patreon':
+        return new PatreonAdapter(this.connectionRepo, this.encryptionService, this.archivalService);
+
+      case 'gumroad':
+        return new GumroadAdapter(this.connectionRepo, this.encryptionService, this.archivalService);
+
+      case 'substack':
+        return new SubstackAdapter();
+
+      case 'shopify':
+        return new ShopifyAdapter(this.connectionRepo, this.encryptionService, this.archivalService);
+
+      case 'stripe':
+        return new StripeAdapter(this.connectionRepo, this.encryptionService, this.archivalService);
+
+      default:
+        return new UnknownPlatformAdapter(platformName);
     }
-
-    if (SUPPORTED_PLATFORMS.has(normalized)) {
-      return new NotImplementedPlatformAdapter(normalized as PlatformName);
-    }
-
-    return new UnknownPlatformAdapter(platformName);
   }
 }

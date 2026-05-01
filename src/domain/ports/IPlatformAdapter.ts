@@ -20,6 +20,7 @@ export interface FetchPlatformDataInput {
   readonly fromDate: string; // YYYY-MM-DD
   readonly toDate: string; // YYYY-MM-DD
   readonly connectionId: string;
+  readonly platformUserId?: string;
 }
 
 export type PlatformAdapterErrorCode =
