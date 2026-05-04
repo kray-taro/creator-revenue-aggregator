@@ -1,0 +1,27 @@
+.queue { display: flex; flex-direction: column; gap: var(--space-6); }
+.header { display: flex; align-items: flex-start; justify-content: space-between; }
+.title { font-size: var(--text-2xl); font-weight: var(--fw-bold); color: var(--text-primary); }
+.subtitle { font-size: var(--text-sm); color: var(--text-secondary); margin-top: var(--space-1); }
+.hint { font-size: var(--text-xs); color: var(--text-tertiary); }
+
+.tabList {
+  display: flex; border-bottom: 1px solid var(--border-subtle);
+  gap: 0; background: transparent;
+}
+
+.tab {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--text-secondary); font-size: var(--text-sm); font-weight: var(--fw-medium);
+  cursor: pointer; transition: all var(--transition-base);
+  margin-bottom: -1px; white-space: nowrap;
+}
+.tab:hover { color: var(--text-primary); background: var(--bg-elevated); }
+.tab[data-state="active"] { color: var(--text-primary); border-bottom-color: var(--accent); }
+.tab[data-state="active"][data-state-variant="green"] { color: var(--green); border-bottom-color: var(--green); }
+.tab[data-state="active"][data-state-variant="yellow"] { color: var(--yellow); border-bottom-color: var(--yellow); }
+.tab[data-state="active"][data-state-variant="red"] { color: var(--red); border-bottom-color: var(--red); }
+
+.tabLabel { }
+.panel { padding-top: var(--space-6); animation: fadeIn var(--transition-base); }
