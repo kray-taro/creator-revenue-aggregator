@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Revenue Architect - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=Public+Sans:wght@500;600;700&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#0051d5",
+                        "on-error": "#ffffff",
+                        "tertiary-container": "#35260c",
+                        "primary": "#091426",
+                        "on-primary-container": "#8590a6",
+                        "on-background": "#0b1c30",
+                        "primary-container": "#1e293b",
+                        "on-secondary-fixed-variant": "#003ea8",
+                        "outline-variant": "#c5c6cd",
+                        "secondary-fixed": "#dbe1ff",
+                        "surface-bright": "#f8f9ff",
+                        "on-surface-variant": "#45474c",
+                        "secondary-fixed-dim": "#b4c5ff",
+                        "surface-container-high": "#dce9ff",
+                        "surface-container": "#e5eeff",
+                        "inverse-surface": "#213145",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-container": "#a38c6a",
+                        "on-primary": "#ffffff",
+                        "secondary-container": "#316bf3",
+                        "on-surface": "#0b1c30",
+                        "primary-fixed-dim": "#bcc7de",
+                        "on-primary-fixed": "#111c2d",
+                        "tertiary-fixed-dim": "#ddc39d",
+                        "surface-tint": "#545f73",
+                        "on-error-container": "#93000a",
+                        "background": "#f8f9ff",
+                        "surface-container-low": "#eff4ff",
+                        "surface": "#f8f9ff",
+                        "outline": "#75777d",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary-container": "#fefcff",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed": "#fadfb8",
+                        "tertiary": "#1e1200",
+                        "on-secondary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "on-secondary-fixed": "#00174b",
+                        "inverse-primary": "#bcc7de",
+                        "on-primary-fixed-variant": "#3c475a",
+                        "on-tertiary-fixed-variant": "#564427",
+                        "on-tertiary-fixed": "#271902",
+                        "surface-dim": "#cbdbf5",
+                        "inverse-on-surface": "#eaf1ff",
+                        "primary-fixed": "#d8e3fb",
+                        "surface-variant": "#d3e4fe",
+                        "surface-container-highest": "#d3e4fe"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "gutter": "24px",
+                        "container-max": "1280px",
+                        "margin": "32px",
+                        "card-padding": "24px",
+                        "base": "8px"
+                    },
+                    "fontFamily": {
+                        "display-md": ["Public Sans"],
+                        "display-lg": ["Public Sans"],
+                        "label-bold": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-caps": ["Inter"],
+                        "headline-sm": ["Public Sans"],
+                        "body-sm": ["Inter"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display-md": ["30px", { "lineHeight": "1.2", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "display-lg": ["36px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-bold": ["12px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "label-caps": ["11px", { "lineHeight": "1", "fontWeight": "700" }],
+                        "headline-sm": ["24px", { "lineHeight": "1.3", "fontWeight": "600" }],
+                        "body-sm": ["14px", { "lineHeight": "1.4", "fontWeight": "400" }],
+                        "body-md": ["16px", { "lineHeight": "1.5", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+
+        .material-symbols-outlined[data-weight="fill"] {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+
+<body class="bg-background text-on-background font-body-md h-screen w-full overflow-hidden flex">
+    <!-- SideNavBar -->
+    <nav
+        class="hidden md:flex flex-col gap-y-1 p-4 h-screen bg-slate-50 border-r border-slate-200 w-64 shrink-0 transition-all duration-200 ease-in-out">
+        <!-- Header -->
+        <div class="flex flex-col gap-1 px-2 mb-6 mt-2">
+            <div class="flex items-center gap-2">
+                <div
+                    class="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-on-secondary shrink-0">
+                    <span class="material-symbols-outlined text-[20px]" data-icon="architecture"
+                        data-weight="fill">architecture</span>
+                </div>
+                <div class="flex flex-col min-w-0 hidden">
+                    <span
+                        class="text-lg font-black text-slate-900 truncate tracking-tight font-display-md leading-none">Revenue
+                        Architect</span>
+                    <span
+                        class="text-slate-500 font-label-caps uppercase tracking-wider text-[10px] mt-1 truncate">Creator
+                        Pro</span>
+                </div>
+            </div>
+        </div>
+        <!-- Primary Navigation -->
+        <div class="flex-1 flex flex-col gap-1 overflow-y-auto items-center">
+            <!-- Active Tab: Dashboard -->
+            <a class="flex items-center gap-3 px-3 py-2 bg-white text-blue-600 shadow-sm border border-slate-200 rounded-lg group"
+                href="#">
+                <span class="material-symbols-outlined text-[20px]" data-icon="dashboard">dashboard</span>
+                <span class="font-public-sans text-sm font-medium truncate hidden">Dashboard</span>
+            </a>
+            <!-- Inactive Tabs -->
+            <a class="flex items-center justify-between px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-200 ease-in-out group"
+                href="#">
+                <div class="flex items-center gap-3 truncate">
+                    <span class="material-symbols-outlined text-[20px]" data-icon="fact_check">fact_check</span>
+                    <span class="font-public-sans text-sm font-medium truncate hidden">Review Queue</span>
+                </div>
+                <span
+                    class="bg-error text-on-error font-label-caps px-1.5 py-0.5 rounded-full text-[10px] hidden">23</span>
+            </a>
+            <a class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-200 ease-in-out group"
+                href="#">
+                <span class="material-symbols-outlined text-[20px]" data-icon="extension">extension</span>
+                <span class="font-public-sans text-sm font-medium truncate hidden">Integrations</span>
+            </a>
+            <a class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-200 ease-in-out group"
+                href="#">
+                <span class="material-symbols-outlined text-[20px]" data-icon="account_balance">account_balance</span>
+                <span class="font-public-sans text-sm font-medium truncate hidden">Chart of Accounts</span>
+            </a>
+        </div>
+        <!-- Secondary Actions & CTA -->
+        <div class="flex flex-col gap-2 mt-auto pt-4 border-t border-slate-200 items-center">
+            <a class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-200 ease-in-out"
+                href="#">
+                <span class="material-symbols-outlined text-[20px]" data-icon="settings">settings</span>
+                <span class="font-public-sans text-sm font-medium hidden">Settings</span>
+            </a>
+            <a class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-200 ease-in-out"
+                href="#">
+                <span class="material-symbols-outlined text-[20px]" data-icon="help">help</span>
+                <span class="font-public-sans text-sm font-medium hidden">Support</span>
+            </a>
+            <button
+                class="mt-4 w-12 h-12 flex items-center justify-center bg-secondary text-on-secondary rounded-full font-label-bold hover:bg-secondary-fixed-variant transition-colors shadow-lg mx-auto shrink-0"><span
+                    class="material-symbols-outlined text-[24px]" data-icon="add">add</span></button>
+        </div>
+    </nav>
+    <!-- Main Content Area Wrapper -->
+    <div class="flex-1 flex flex-col min-w-0 bg-background relative">
+        <!-- TopAppBar -->
+        <header
+            class="flex justify-between items-center w-full px-6 h-16 bg-white border-b border-slate-200 shrink-0 z-10 flat no shadows">
+            <!-- Left: Breadcrumbs / Title -->
+            <div class="flex items-center gap-2 min-w-0 flex-1">
+                <span class="text-xl font-bold text-slate-900 font-public-sans tracking-tight truncate">Practice
+                    Overview</span>
+            </div>
+            <!-- Middle: Search (Desktop) -->
+            <div class="hidden lg:flex items-center max-w-md w-full mx-4 relative">
+                <span class="material-symbols-outlined absolute left-3 text-slate-400 text-[20px]"
+                    data-icon="search">search</span>
+                <input
+                    class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg font-body-sm text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent transition-all"
+                    placeholder="Search clients or transactions..." type="text" />
+            </div>
+            <!-- Right: Actions & Profile -->
+            <div class="flex items-center gap-2 shrink-0">
+                <button
+                    class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors relative cursor-pointer active:opacity-80 lg:hidden">
+                    <span class="material-symbols-outlined" data-icon="search">search</span>
+                </button>
+                <button
+                    class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors relative cursor-pointer active:opacity-80">
+                    <span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+                    <span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border-2 border-white"></span>
+                </button>
+                <button
+                    class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors cursor-pointer active:opacity-80 hidden sm:block">
+                    <span class="material-symbols-outlined" data-icon="help">help</span>
+                </button>
+                <div class="h-6 w-[1px] bg-slate-200 mx-2 hidden sm:block"></div>
+                <button
+                    class="flex items-center gap-2 pl-2 pr-1 py-1 rounded-full hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200 cursor-pointer active:opacity-80">
+                    <img alt="User profile avatar" class="w-8 h-8 rounded-full border border-slate-200 object-cover"
+                        data-alt="A close-up portrait of a professional man in a modern office environment. The lighting is bright and even, characteristic of a high-quality corporate headshot. He is smiling slightly, projecting reliability and approachability. The image fits perfectly within a clean, modern corporate UI design system."
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8qLCWJixWdRXzVyh3DUdw584Rzb9cOoEw7587oEfd0jgzIQJq_VzEHCnrBULRRyW8A7r6TRq2c0SZO6UL4KjIfMDwwghDUPmkuuAtl2wktPXZceBnYGeQTpHnQ-wwglTHcqkS0Izx7ZNJFz80ebdLRbZNRaHLwpBsOOlwTaVgSCSuewoLp-yFcuS-MqhlVutAe9AF5pWLOqj2520SQySIDmlAkHw9tL9CoZBnGc_4bJrRl8qbYnM8qRciWe0CaeG5d02Nkx4WyIo" />
+                </button>
+            </div>
+        </header>
+        <!-- Main Canvas Content (Scrollable) -->
+        <main class="flex-1 overflow-y-auto p-gutter relative">
+            <div class="max-w-container-max mx-auto h-full flex flex-col">
+                <!-- Shell Layout Preview Content -->
+                <div
+                    class="w-full bg-white border border-slate-200 rounded-xl p-card-padding shadow-[0_4px_10px_rgba(0,0,0,0.04)] flex flex-col items-center justify-center text-center h-[calc(100vh-200px)] min-h-[400px]">
+                    <div class="w-16 h-16 bg-surface-container-low rounded-full flex items-center justify-center mb-6">
+                        <span class="material-symbols-outlined text-secondary text-[32px]"
+                            data-icon="view_quilt">view_quilt</span>
+                    </div>
+                    <h2 class="font-headline-sm text-slate-900 mb-2">Shell Layout Active</h2>
+                    <p class="font-body-lg text-slate-500 max-w-lg mb-8">This canvas area is ready for data
+                        visualization components, metric cards, and review queues. The navigation shell surrounds this
+                        responsive container.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-3xl opacity-50 pointer-events-none">
+                        <div
+                            class="bg-slate-50 h-32 rounded-lg border border-slate-200 border-dashed flex items-center justify-center">
+                            <span class="font-label-caps text-slate-400">Metric Card</span>
+                        </div>
+                        <div
+                            class="bg-slate-50 h-32 rounded-lg border border-slate-200 border-dashed flex items-center justify-center">
+                            <span class="font-label-caps text-slate-400">Metric Card</span>
+                        </div>
+                        <div
+                            class="bg-slate-50 h-32 rounded-lg border border-slate-200 border-dashed flex items-center justify-center">
+                            <span class="font-label-caps text-slate-400">Metric Card</span>
+                        </div>
+                        <div
+                            class="bg-slate-50 h-64 rounded-lg border border-slate-200 border-dashed flex items-center justify-center sm:col-span-2">
+                            <span class="font-label-caps text-slate-400">Data Visualization</span>
+                        </div>
+                        <div
+                            class="bg-slate-50 h-64 rounded-lg border border-slate-200 border-dashed flex items-center justify-center">
+                            <span class="font-label-caps text-slate-400">List View</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <!-- Mobile Bottom Navigation (Visible only on md:hidden) -->
+    <nav
+        class="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 h-16 flex justify-around items-center px-2 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.04)]">
+        <a class="flex flex-col items-center justify-center w-full h-full text-blue-600 gap-1 active:opacity-80"
+            href="#">
+            <span class="material-symbols-outlined text-[24px]" data-icon="dashboard"
+                data-weight="fill">dashboard</span>
+            <span class="text-[10px] font-public-sans font-medium leading-none">Dashboard</span>
+        </a>
+        <a class="flex flex-col items-center justify-center w-full h-full text-slate-500 hover:text-slate-900 gap-1 active:opacity-80 relative"
+            href="#">
+            <span class="material-symbols-outlined text-[24px]" data-icon="fact_check">fact_check</span>
+            <span class="text-[10px] font-public-sans font-medium leading-none">Queue</span>
+            <span class="absolute top-2 right-4 w-2 h-2 bg-error rounded-full"></span>
+        </a>
+        <a class="flex flex-col items-center justify-center w-full h-full text-slate-500 hover:text-slate-900 gap-1 active:opacity-80"
+            href="#">
+            <span class="material-symbols-outlined text-[24px]" data-icon="extension">extension</span>
+            <span class="text-[10px] font-public-sans font-medium leading-none">Integrations</span>
+        </a>
+        <a class="flex flex-col items-center justify-center w-full h-full text-slate-500 hover:text-slate-900 gap-1 active:opacity-80"
+            href="#">
+            <span class="material-symbols-outlined text-[24px]" data-icon="account_balance">account_balance</span>
+            <span class="text-[10px] font-public-sans font-medium leading-none">COA</span>
+        </a>
+        <a class="flex flex-col items-center justify-center w-full h-full text-slate-500 hover:text-slate-900 gap-1 active:opacity-80"
+            href="#">
+            <span class="material-symbols-outlined text-[24px]" data-icon="menu">menu</span>
+            <span class="text-[10px] font-public-sans font-medium leading-none">More</span>
+        </a>
+    </nav>
+</body>
+
+</html>

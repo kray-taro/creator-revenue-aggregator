@@ -1,0 +1,161 @@
+/* ─── Header Bar  */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  padding: 0 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+/* Left: Title */
+.titleArea {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0px;
+  min-width: 0;
+  flex: 1;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Public Sans', var(--font-sans), sans-serif;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Public Sans', var(--font-sans), sans-serif;
+}
+
+/* Center: Search */
+.searchBar {
+  display: flex;
+  align-items: center;
+  max-width: 420px;
+  width: 100%;
+  position: relative;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 12px;
+  font-size: 20px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 8px 16px 8px 40px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #0f172a;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.searchInput::placeholder {
+  color: #94a3b8;
+}
+
+.searchInput:focus {
+  border-color: #0051d5;
+  box-shadow: 0 0 0 2px rgba(0, 81, 213, 0.15);
+}
+
+/* Right: Actions */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.actionBtn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  color: #64748b;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 22px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.actionBtn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.notifDot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  background: #dc2626;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background: #e2e8f0;
+  margin: 0 8px;
+}
+
+.avatarBtn {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.avatarBtn:hover {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0051d5, #3b82f6);
+  border: 1px solid #e2e8f0;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

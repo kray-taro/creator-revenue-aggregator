@@ -1,0 +1,5 @@
+.money { font-family: var(--font-mono); font-weight: var(--fw-medium); color: var(--text-primary); white-space: nowrap; }
+.sm { font-size: var(--text-xs); }
+.md { font-size: var(--text-sm); }
+.lg { font-size: var(--text-lg); }
+.muted { color: var(--text-tertiary); }
