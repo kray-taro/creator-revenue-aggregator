@@ -1,0 +1,11 @@
+.wrapper { display: inline-flex; align-items: center; gap: var(--space-2); }
+.icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm);
+  font-weight: var(--fw-bold);
+  flex-shrink: 0;
+}
+.sm .icon { width: 20px; height: 20px; font-size: 10px; border-radius: 4px; }
+.md .icon { width: 26px; height: 26px; font-size: 13px; border-radius: 6px; }
+.lg .icon { width: 34px; height: 34px; font-size: 16px; border-radius: 8px; }
+.name { font-size: var(--text-sm); font-weight: var(--fw-medium); color: var(--text-secondary); }
