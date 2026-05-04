@@ -1,0 +1,389 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ─── Design Tokens  */
+:root {
+  /* Backgrounds */
+  --bg-base: #ffffff;
+  --bg-surface: #f0f0f0;
+  --bg-card: #f0f0f0;
+  --bg-elevated: #f0f0f0;
+  --bg-hover: #e0e0e0;
+  --bg-active: #d0d0d0;
+
+  /* Borders */
+  --border-subtle: #dfdfdf;
+  --border-default: #dfdfdf;
+  --border-strong: #cccccc;
+
+  /* Text */
+  --text-primary: rgb(20, 20, 20);
+  --text-secondary: #555555;
+  --text-tertiary: #777777;
+  --text-disabled: #aaaaaa;
+  --text-inverse: #ffffff;
+
+  /* Brand */
+  --accent: hsl(217, 91%, 60%);
+  --accent-hover: hsl(217, 91%, 66%);
+  --accent-muted: hsl(217, 60%, 20%);
+  --accent-border: hsl(217, 60%, 30%);
+
+  /* Semantic colors */
+  --green: hsl(152, 69%, 47%);
+  --green-hover: hsl(152, 69%, 54%);
+  --green-muted: hsl(152, 40%, 12%);
+  --green-border: hsl(152, 40%, 20%);
+  --green-text: hsl(152, 69%, 47%);
+
+  --yellow: hsl(38, 92%, 50%);
+  --yellow-hover: hsl(38, 92%, 57%);
+  --yellow-muted: hsl(38, 60%, 12%);
+  --yellow-border: hsl(38, 60%, 22%);
+  --yellow-text: hsl(38, 92%, 50%);
+
+  --red: hsl(0, 84%, 60%);
+  --red-hover: hsl(0, 84%, 67%);
+  --red-muted: hsl(0, 50%, 12%);
+  --red-border: hsl(0, 50%, 22%);
+  --red-text: hsl(0, 84%, 60%);
+
+  --orange: hsl(25, 95%, 56%);
+  --orange-muted: hsl(25, 60%, 14%);
+  --orange-border: hsl(25, 60%, 24%);
+
+  /* Typography */
+  --font-sans: Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 14px;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.7;
+
+  --fw-light: 300;
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px hsl(0 0% 0% / 0.3), 0 1px 2px hsl(0 0% 0% / 0.2);
+  --shadow-md: 0 4px 12px hsl(0 0% 0% / 0.35), 0 2px 4px hsl(0 0% 0% / 0.2);
+  --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.4), 0 4px 8px hsl(0 0% 0% / 0.25);
+  --shadow-xl: 0 16px 48px hsl(0 0% 0% / 0.5), 0 8px 16px hsl(0 0% 0% / 0.3);
+  --shadow-glow: 0 0 0 3px hsl(217, 91%, 60% / 0.25);
+
+  /* Transitions */
+  --transition-fast: 100ms ease-out;
+  --transition-base: 150ms ease-out;
+  --transition-slow: 300ms ease-out;
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --sidebar-collapsed-w: 64px;
+  --topbar-height: 60px;
+  --content-max-w: 1280px;
+}
+
+/* ─── Reset  */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--fw-normal);
+  line-height: var(--leading-normal);
+  color: var(--text-primary);
+  background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--transition-base);
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+/* ─── Typography utilities  */
+.mono {
+  font-family: var(--font-mono);
+}
+
+.text-xs {
+  font-size: var(--text-xs);
+}
+
+.text-sm {
+  font-size: var(--text-sm);
+}
+
+.text-base {
+  font-size: var(--text-base);
+}
+
+.text-lg {
+  font-size: var(--text-lg);
+}
+
+.text-xl {
+  font-size: var(--text-xl);
+}
+
+.text-2xl {
+  font-size: var(--text-2xl);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-tertiary {
+  color: var(--text-tertiary);
+}
+
+/* ─── Scrollbars  */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ─── Focus ring  */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ─── Animations  */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes countDown {
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0%;
+  }
+}
+
+/* ─── Skeleton shimmer  */
+.skeleton {
+  background: linear-gradient(90deg,
+      var(--bg-card) 25%,
+      var(--bg-elevated) 50%,
+      var(--bg-card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-md);
+}
+
+/* ─── App shell  */
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-rows: 1fr;
+  height: 100vh;
+  overflow: hidden;
+  transition: grid-template-columns var(--transition-slow);
+}
+
+.app-shell.collapsed {
+  grid-template-columns: var(--sidebar-collapsed-w) 1fr;
+}
+
+.main-content {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.page-body {
+  flex: 1;
+  padding: var(--space-8);
+  max-width: var(--content-max-w);
+  width: 100%;
+  margin: 0 auto;
+  overflow-y: auto;
+  animation: fadeIn var(--transition-slow);
+}
+
+/* ─── Misc utilities  */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gap-1 {
+  gap: var(--space-1);
+}
+
+.gap-2 {
+  gap: var(--space-2);
+}
+
+.gap-3 {
+  gap: var(--space-3);
+}
+
+.gap-4 {
+  gap: var(--space-4);
+}
